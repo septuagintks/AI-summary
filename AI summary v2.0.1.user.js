@@ -18,7 +18,7 @@
     'use strict';
 
     /* ================================================
-       默认配置
+       Default configuration
     ================================================ */
     const DEFAULTS = {
         apiUrl: 'https://api.openai.com/v1/chat/completions',
@@ -48,7 +48,7 @@
     };
 
     /* ================================================
-       API 预设
+       API presets
     ================================================ */
     const PRESETS = [
        { id: 'openai',    name: 'OpenAI',    url: 'https://api.openai.com/v1/chat/completions',                                               model: 'gpt-5.5' },
@@ -60,7 +60,7 @@
     ];
 
     /* ================================================
-       配置管理
+       Configuration management
     ================================================ */
     const Cfg = {
         get: () => Object.fromEntries(Object.keys(DEFAULTS).map(k => [k, GM_getValue(k, DEFAULTS[k])])),
@@ -69,10 +69,10 @@
     };
 
     /* ================================================
-       正文提取
+       Content extraction
     ================================================ */
     function extractContent() {
-        // 需要移除的无用元素
+        // Elements to remove
         const STRIP_SEL = [
             'script','style','noscript','iframe','svg','canvas',
             'nav','header','footer','aside','[role="navigation"]',
@@ -84,7 +84,7 @@
             '[class*="popup"]','[class*="modal"]','[class*="cookie"]',
             '.share','.social','.related','.recommend',
         ];
-        // 优先尝试的正文选择器
+        // Preferred content selectors
         const CONTENT_SEL = [
             'article','[role="main"]','main',
             '.article-content','.article-body','.post-content',
@@ -106,7 +106,7 @@
                     if (t.length > 300) return cleanText(t);
                 }
             }
-            // 回退到 body
+            // Fallback to body
             const body = clone.querySelector('body');
             return cleanText(body?.innerText || body?.textContent || document.body.textContent || '');
         } catch {
@@ -122,17 +122,17 @@
     }
 
 /* ================================================
-   多提供商适配层
+   Multi-provider adapter layer
 ================================================ */
 
-/** 根据 URL 识别 API 提供商 */
+/* Identify API provider based on URL */
 function detectProvider(url) {
     if (url.includes('anthropic.com'))               return 'anthropic';
     if (url.includes('generativelanguage.googleapis')) return 'gemini';
-    return 'openai'; // 默认 OpenAI 兼容格式（DeepSeek/xAI/OpenRouter 等均适用）
+    return 'openai'; // Default OpenAI compatibility format（DeepSeek/xAI/OpenRouter etc.）
 }
 
-/** 构建各提供商的请求参数 */
+/* Build request parameters for each provider */
 function buildRequest(cfg, userMsg) {
     const provider = detectProvider(cfg.apiUrl);
 
@@ -142,13 +142,13 @@ function buildRequest(cfg, userMsg) {
             url: cfg.apiUrl,
             headers: {
                 'Content-Type':      'application/json',
-                'x-api-key':         cfg.apiKey,           // ← 关键：不是 Bearer
-                'anthropic-version': '2023-06-01',         // ← 必须携带
+                'x-api-key':         cfg.apiKey,
+                'anthropic-version': '2023-06-01',
             },
             body: JSON.stringify({
                 model:      cfg.model,
                 max_tokens: +cfg.maxTokens,
-                system:     cfg.systemPrompt,              // ← system 是独立字段
+                system:     cfg.systemPrompt,
                 messages:   [{ role: 'user', content: userMsg }],
                 stream:     cfg.stream,
             }),
@@ -157,17 +157,17 @@ function buildRequest(cfg, userMsg) {
 
     // ── Gemini ──────────────────────────────────────────────────────
     if (provider === 'gemini') {
-        // URL 模板替换：{model} 和 {key}
+        // URL formwork replace：{model} and {key}
         let url = cfg.apiUrl
             .replace('{model}', cfg.model)
             .replace('{key}',   cfg.apiKey);
-        // 流式输出时切换到 streamGenerateContent 端点
+        // Switch to streamGenerateContent endpoint when streaming output
         if (cfg.stream) {
             url = url.replace('generateContent', 'streamGenerateContent') + '&alt=sse';
         }
         return {
             url,
-            headers: { 'Content-Type': 'application/json' }, // key 在 URL 里，无需 header
+            headers: { 'Content-Type': 'application/json' }, // Key is in the URL, no need for header
             body: JSON.stringify({
                 contents: [{
                     role:  'user',
@@ -184,7 +184,7 @@ function buildRequest(cfg, userMsg) {
         };
     }
 
-    // ── OpenAI 兼容（DeepSeek / xAI / OpenRouter / Kimi 等）─────────
+    // ── OpenAI compatible (DeepSeek / xAI / OpenRouter / Kimi, etc.)─────────
     return {
         url: cfg.apiUrl,
         headers: {
@@ -204,7 +204,7 @@ function buildRequest(cfg, userMsg) {
     };
 }
 
-/** 解析 SSE 流式数据块，返回文本增量；'[DONE]' 表示结束；null 表示跳过 */
+/* Parse SSE streaming data blocks and return text increments; '[DONE]' means end; null means skip */
 function parseStreamChunk(provider, line) {
     if (!line.startsWith('data:')) return null;
     const raw = line.slice(5).trim();
@@ -235,9 +235,9 @@ function parseStreamChunk(provider, line) {
     } catch { return null; }
 }
 
-/** 解析非流式完整响应，或流式响应的完整文本（兜底用） */
+/* Parse the complete non-streaming response, or the complete text of the streaming response (for the bottom of the pocket) */
 function parseFullResponse(provider, responseText) {
-    // 先尝试作为流式 SSE 文本解析（onprogress 未触发时的兜底）
+    // Try to parse the text as a stream SSE first (the bottom when onprogress is not triggered)
     if (responseText.includes('data:')) {
         let result = '';
         for (const line of responseText.split('\n')) {
@@ -246,7 +246,7 @@ function parseFullResponse(provider, responseText) {
         }
         if (result) return result;
     }
-    // 再尝试作为标准 JSON 解析（非流式模式）
+    // Then try to parse as a standard JSON (non-stream mode)
     try {
         const json = JSON.parse(responseText);
         if (provider === 'anthropic') return json.content?.[0]?.text || '';
@@ -256,7 +256,7 @@ function parseFullResponse(provider, responseText) {
 }
 
 
-/** 解析各提供商的错误信息 */
+/* Parse the error messages of each provider */
 function parseErrorMsg(provider, responseText, status) {
     let msg = `HTTP ${status}`;
     try {
@@ -269,7 +269,7 @@ function parseErrorMsg(provider, responseText, status) {
 }
 
 /* ================================================
-   API 调用主函数（替换原版）
+   API main function
 ================================================ */
 let _req = null;
 
