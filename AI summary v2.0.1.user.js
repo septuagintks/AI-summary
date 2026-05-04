@@ -833,7 +833,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
         const fab = document.createElement('button');
         fab.id = 'ais-fab';
         fab.title = 'AI 内容总结';
-        fab.textContent = '🤖';
+        fab.textContent = '📍';
 
         // 主面板
         const mainPanel = createMainPanel();
