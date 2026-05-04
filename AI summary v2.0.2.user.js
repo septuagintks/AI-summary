@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI summary
 // @namespace    http://tampermonkey.net/
-// @version      2.0.1
+// @version      2.0.2
 // @description  One-click extraction of webpage main content, with intelligent summarization via AI APIs; supports OpenAI, Anthropic, Gemini, DeepSeek, and other compatible interfaces.
 // @author       Septuagint,URL:https://Candy-spt.com/
 // @match        *://*/*
@@ -680,10 +680,76 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
     ================================================ */
     function bindMainEvents() {
         // 悬浮按钮
-        $('ais-fab').addEventListener('click', () => {
+        const fab = document.getElementById('ais-fab');
+        let isDragging = false;
+        let hasMoved = false; // 用于区分拖拽和点击
+        let offset = { x: 0, y: 0 };
+
+        // 鼠标按下：准备拖拽
+        fab.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            hasMoved = false;
+
+            // 记录鼠标相对按钮左上角的偏移
+            const rect = fab.getBoundingClientRect();
+            offset.x = e.clientX - rect.left;
+            offset.y = e.clientY - rect.top;
+
+            fab.style.transition = 'none'; // 拖拽时禁用 CSS 动画，防止跟手延迟
+        });
+
+        // 鼠标移动
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+
+            hasMoved = true;
+            let left = e.clientX - offset.x;
+            let top = e.clientY - offset.y;
+
+            // 边界处理：防止按钮拖出屏幕
+            const padding = 10;
+            left = Math.max(padding, Math.min(window.innerWidth - fab.offsetWidth - padding, left));
+            top = Math.max(padding, Math.min(window.innerHeight - fab.offsetHeight - padding, top));
+
+            fab.style.left = left + 'px';
+            fab.style.top = top + 'px';
+            fab.style.right = 'auto';  // 清除右/下定位
+            fab.style.bottom = 'auto';
+        });
+
+        // 鼠标松开：保存位置
+        document.addEventListener('mouseup', () => {
+            if (!isDragging) return;
+            isDragging = false;
+            fab.style.transition = 'transform .2s, box-shadow .2s'; // 恢复动画效果
+
+            if (hasMoved) {
+                // 保存坐标到油猴存储
+                const pos = {
+                    left: fab.style.left,
+                    top: fab.style.top,
+                    right: 'auto',
+                    bottom: 'auto'
+                };
+                GM_setValue('fab_position', pos);
+            }
+        });
+
+        // 修改点击事件：如果是拖拽行为，则不触发面板切换
+        fab.addEventListener('click', (e) => {
+            if (hasMoved) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // 原有逻辑
             panelOpen = !panelOpen;
             toggle('ais-main', panelOpen);
-            if (!panelOpen) { settingsOpen = false; toggle('ais-settings', false); }
+            if (!panelOpen) {
+                settingsOpen = false;
+                toggle('ais-settings', false);
+            }
         });
 
         // 关闭主面板
@@ -829,11 +895,26 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
        Initialization
     ================================================ */
     function init() {
-        // Floating button
         const fab = document.createElement('button');
         fab.id = 'ais-fab';
         fab.title = 'AI 内容总结';
         fab.textContent = '📍';
+
+        // --- 读取并设置记忆位置 ---
+        // 默认位置：右 22px, 下 22px
+        const defaultPos = { right: '22px', bottom: '22px', left: 'auto', top: 'auto' };
+        const pos = GM_getValue('fab_position', defaultPos);
+
+        Object.assign(fab.style, {
+            position: 'fixed',
+            right: pos.right,
+            bottom: pos.bottom,
+            left: pos.left,
+            top: pos.top
+        });
+
+        document.body.appendChild(fab);
+
 
         // Main panel
         const mainPanel = createMainPanel();
