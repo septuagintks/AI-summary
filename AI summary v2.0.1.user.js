@@ -427,7 +427,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
         #ais-fab {
             position: fixed; right: 22px; bottom: 22px; z-index: 2147483641;
             display: flex; align-items: center; justify-content: center;
-            width: 52px; height: 52px; border-radius: 50%;
+            width: 36px; height: 36px; border-radius: 50%;
             background: linear-gradient(135deg, #6366f1, #8b5cf6);
             border: none; cursor: pointer; color: #fff; font-size: 24px;
             box-shadow: 0 4px 18px rgba(99,102,241,.55);
