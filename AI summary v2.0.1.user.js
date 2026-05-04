@@ -317,10 +317,10 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
                 finish(fullText);
                 return;
             }
-            // 流式兜底：如果 onprogress 没有触发（某些环境），则从完整响应里解析
+            // Streaming fallback: if onprogress is not triggered (in some environments), parse from full response
             setTimeout(() => {
                 if (!fullText) {
-                    // onprogress 从未触发，手动从完整响应解析
+                    // onprogress never triggered, manually parse from full response
                     fullText = parseFullResponse(provider, res.responseText);
                     if (fullText) onChunk(fullText);
                 }
@@ -334,10 +334,10 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
 }
 
     /* ================================================
-       简易 Markdown 渲染
+       Simple Markdown rendering
     ================================================ */
     function renderMd(raw) {
-        // 先转义 HTML 特殊字符
+        // Escape HTML special characters first
         const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
         const lines = esc(raw).split('\n');
@@ -345,20 +345,20 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
         let inUl = false;
 
         for (const rawLine of lines) {
-            // 行内样式
+            // Inline styles
             let line = rawLine
                 .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
                 .replace(/\*(.+?)\*/g, '<em>$1</em>')
                 .replace(/`(.+?)`/g, '<code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:12px">$1</code>');
 
-            // 标题
+            // Headings
             if (/^#{1,3} /.test(rawLine)) {
                 if (inUl) { html += '</ul>'; inUl = false; }
                 html += `<h3 style="margin:10px 0 4px;font-size:14px;font-weight:700">${line.replace(/^#+\s*/, '')}</h3>`;
                 continue;
             }
 
-            // 列表
+            // Lists
             if (/^[-*•] /.test(rawLine)) {
                 if (!inUl) { html += '<ul style="padding-left:20px;margin:6px 0">'; inUl = true; }
                 html += `<li style="margin:3px 0">${line.replace(/^[-*•]\s*/, '')}</li>`;
@@ -367,7 +367,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
 
             if (inUl) { html += '</ul>'; inUl = false; }
 
-            // 空行
+            // Empty line
             if (!rawLine.trim()) { html += '<br>'; continue; }
 
             html += `<p style="margin:5px 0">${line}</p>`;
@@ -377,7 +377,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
     }
 
     /* ================================================
-       工具函数
+       Utility functions
     ================================================ */
     const $ = id => document.getElementById(id);
     const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -409,21 +409,21 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
     }
 
     /* ================================================
-       CSS 样式
+       CSS styles
     ================================================ */
     GM_addStyle(`
         @keyframes ais-spin { to { transform: rotate(360deg); } }
         @keyframes ais-blink { 50% { opacity: 0; } }
         @keyframes ais-ti { from { opacity:0; transform:translateY(8px); } }
 
-        /* 面板隐藏态（带过渡动画） */
+        /* Panel hidden state (with transition animation) */
         .ais-off {
             opacity: 0 !important;
             pointer-events: none !important;
             transform: translateY(10px) scale(.97) !important;
         }
 
-        /* 悬浮按钮 */
+        /* Floating button */
         #ais-fab {
             position: fixed; right: 22px; bottom: 22px; z-index: 2147483641;
             display: flex; align-items: center; justify-content: center;
@@ -437,7 +437,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
         #ais-fab:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(99,102,241,.7); }
         #ais-fab:active { transform: scale(.95); }
 
-        /* 面板通用样式 */
+        /* Panel common styles */
         #ais-main, #ais-settings {
             position: fixed; right: 22px; bottom: 86px; z-index: 2147483640;
             width: 420px; background: #fff; border-radius: 18px;
@@ -448,7 +448,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
             font-size: 14px;
         }
 
-        /* 面板头部 */
+        /* Panel header */
         .ais-hd {
             display: flex; align-items: center; gap: 6px; padding: 12px 14px;
             background: linear-gradient(135deg, #6366f1, #8b5cf6);
@@ -462,14 +462,14 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
         }
         .ais-hbtn:hover { background: rgba(255,255,255,.38); }
 
-        /* 元信息 */
+        /* Meta information */
         .ais-meta {
             padding: 6px 14px; font-size: 11px; color: #9ca3af;
             background: #fafafa; border-bottom: 1px solid #f3f4f6;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
         }
 
-        /* 主体滚动区 */
+        /* Main scrollable area */
         .ais-body {
             flex: 1; overflow-y: auto; padding: 14px;
             min-height: 160px; max-height: 440px;
@@ -477,13 +477,13 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
         .ais-body::-webkit-scrollbar { width: 4px; }
         .ais-body::-webkit-scrollbar-thumb { background: #e0e0e0; border-radius: 4px; }
 
-        /* 占位文字 */
+        /* Placeholder text */
         .ais-ph {
             color: #9ca3af; text-align: center; padding: 32px 12px;
             line-height: 1.8; font-size: 13px;
         }
 
-        /* 加载动画 */
+        /* Loading animation */
         .ais-loading {
             display: flex; align-items: center; justify-content: center;
             gap: 10px; color: #6366f1; padding: 32px; font-size: 13px;
@@ -494,21 +494,21 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
             animation: ais-spin .7s linear infinite; flex-shrink: 0;
         }
 
-        /* 结果内容 */
+        /* Result content */
         .ais-res { line-height: 1.8; color: #1f2937; font-size: 13.5px; }
         .ais-cursor::after {
             content: '▊'; color: #6366f1;
             animation: ais-blink .8s step-end infinite;
         }
 
-        /* 错误提示 */
+        /* Error message */
         .ais-err {
             background: #fef2f2; border-left: 3px solid #f87171;
             color: #dc2626; padding: 12px 14px; border-radius: 8px;
             font-size: 13px; line-height: 1.6;
         }
 
-        /* 底部操作栏 */
+        /* Bottom action bar */
         .ais-ft {
             display: flex; gap: 8px; padding: 10px 12px;
             border-top: 1px solid #f3f4f6; flex-shrink: 0;
@@ -528,7 +528,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
         .ais-danger { background: #fee2e2; color: #dc2626; }
         .ais-danger:hover { background: #fecaca; }
 
-        /* ====== 设置面板 ====== */
+        /* ====== Settings panel ====== */
         #ais-settings { max-height: 580px; }
         .ais-cfg-body { padding: 14px 16px; overflow-y: auto; flex: 1; }
         .ais-cfg-body::-webkit-scrollbar { width: 4px; }
@@ -547,7 +547,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
         .ais-inp:focus, .ais-ta:focus { border-color: #6366f1; background: #fff; }
         .ais-ta { resize: vertical; min-height: 75px; }
 
-        /* 预设按钮 */
+        /* Preset buttons */
         .ais-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
         .ais-pre {
             padding: 4px 11px; border: 1.5px solid #e0e7ff; background: #eef2ff;
@@ -556,7 +556,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
         }
         .ais-pre:hover { background: #6366f1; color: #fff; border-color: #6366f1; }
 
-        /* 开关 */
+        /* Switch */
         .ais-row { display: flex; align-items: center; justify-content: space-between; }
         .ais-sw {
             position: relative; width: 40px; height: 22px; background: #d1d5db;
@@ -573,7 +573,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
     `);
 
     /* ================================================
-       状态变量
+       State variables
     ================================================ */
     let panelOpen = false;
     let settingsOpen = false;
@@ -581,7 +581,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
     let fullText = '';
 
     /* ================================================
-       构建主面板 HTML
+      Build main panel HTML
     ================================================ */
     function abortAPI() {
     if (_req) { _req.abort(); _req = null; }
@@ -613,7 +613,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
     }
 
     /* ================================================
-       构建设置面板 HTML
+       Build settings panel HTML
     ================================================ */
     function renderSettings(cfg) {
         let s = $('ais-settings');
@@ -676,7 +676,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
     }
 
     /* ================================================
-       事件绑定
+       Event bindings
     ================================================ */
     function bindMainEvents() {
         // 悬浮按钮
@@ -773,7 +773,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
     }
 
     /* ================================================
-       核心：执行总结
+       Core: execute summary
     ================================================ */
     function doSummary() {
         if (streaming) return;
@@ -794,7 +794,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
             return;
         }
 
-        // 更新元信息栏：显示字数
+        // Update meta info bar: display word count
         const metaEl = $('ais-meta');
         if (metaEl) metaEl.textContent = `📄 ${esc(document.title)}  ·  提取 ${content.length} 字`;
 
@@ -826,19 +826,19 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
     }
 
     /* ================================================
-       初始化
+       Initialization
     ================================================ */
     function init() {
-        // 悬浮按钮
+        // Floating button
         const fab = document.createElement('button');
         fab.id = 'ais-fab';
         fab.title = 'AI 内容总结';
         fab.textContent = '📍';
 
-        // 主面板
+        // Main panel
         const mainPanel = createMainPanel();
 
-        // 设置面板（占位，内容由 renderSettings 填充）
+        // Settings panel (placeholder, content filled by renderSettings)
         const settingsPanel = document.createElement('div');
         settingsPanel.id = 'ais-settings';
         settingsPanel.className = 'ais-off';
@@ -852,7 +852,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
     }
 
     /* ================================================
-       油猴菜单命令
+       Tampermonkey menu commands
     ================================================ */
     GM_registerMenuCommand('🤖 AI 总结当前页面', () => {
         panelOpen = true; toggle('ais-main', true);
@@ -864,7 +864,7 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
     });
 
     /* ================================================
-       启动
+       Startup
     ================================================ */
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
