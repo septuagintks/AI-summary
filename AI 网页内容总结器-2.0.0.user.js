@@ -21,9 +21,9 @@
        默认配置
     ================================================ */
     const DEFAULTS = {
-        apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+        apiUrl: 'https://api.openai.com/v1/chat/completions',
         apiKey: '',
-        model: 'google/gemini-3.1-pro-preview',
+        model: 'gpt-5.5',
         maxTokens: 2048,
         temperature: 0.7,
         stream: true,
