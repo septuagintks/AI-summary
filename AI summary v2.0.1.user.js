@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         AI 网页内容总结器
+// @name         AI summary
 // @namespace    http://tampermonkey.net/
-// @version      2.0.0
-// @description  一键抓取网页正文，通过 AI API 智能总结；支持 OpenAI/Anthropic/Gemini/DeepSeek等兼容接口
-// @author       Septuagint,URL:https://candy-spt.com/
+// @version      2.0.1
+// @description  One-click extraction of webpage main content, with intelligent summarization via AI APIs; supports OpenAI, Anthropic, Gemini, DeepSeek, and other compatible interfaces.
+// @author       Septuagint,URL:https://Candy-spt.com/
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
@@ -42,7 +42,7 @@
 🔑 **要点**：
 - 要点一
 - 要点二
-- 要点三
+- ……
 
 💡 **总结**：简短结论`,
     };
