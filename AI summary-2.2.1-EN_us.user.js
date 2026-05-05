@@ -428,13 +428,13 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
             position: fixed; right: 22px; bottom: 22px; z-index: 2147483641;
             display: flex; align-items: center; justify-content: center;
             width: 35px; height: 35px; border-radius: 50%;
-            background: linear-gradient(135deg, #EAE0FF, #F3F2FA);
+            background: linear-gradient(135deg, #F8F8F8, #F8F8F8);
             border: none; cursor: pointer; color: #fff; font-size: 24px;
-            box-shadow: 0 4px 18px rgba(220,220,255,.3);
+            box-shadow: 1 4px 18px rgba(125,125,125,.6);
             transition: transform .2s, box-shadow .2s;
             user-select: none;
         }
-        #ais-fab:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(99,102,241,.7); }
+        #ais-fab:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(150,150,150,.5); }
         #ais-fab:active { transform: scale(.95); }
 
         /* Panel general styles */
