@@ -428,9 +428,9 @@ function callAPI(content, title, { onChunk, onDone, onError }) {
             position: fixed; right: 22px; bottom: 22px; z-index: 2147483641;
             display: flex; align-items: center; justify-content: center;
             width: 35px; height: 35px; border-radius: 50%;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            background: linear-gradient(135deg, #EAE0FF, #F3F2FA);
             border: none; cursor: pointer; color: #fff; font-size: 24px;
-            box-shadow: 0 4px 18px rgba(99,102,241,.55);
+            box-shadow: 0 4px 18px rgba(220,220,255,.3);
             transition: transform .2s, box-shadow .2s;
             user-select: none;
         }
