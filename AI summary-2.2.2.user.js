@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI summary
 // @namespace    http://tampermonkey.net/
-// @version      2.2.1
+// @version      2.2.2
 // @description  One-click capture of webpage content, intelligent summary via AI API; supports OpenAI/Anthropic/Gemini/DeepSeek and other compatible interfaces
 // @author       Septuagint,URL:https://Candy-spt.com/
 // @match        *://*/*
