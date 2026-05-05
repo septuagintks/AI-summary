@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI summary
 // @namespace    http://tampermonkey.net/
-// @version      2.3.0
+// @version      2.4.0
 // @description  一键抓取网页正文，通过 AI API 智能总结；支持追问及多轮对话；支持 OpenAI/Anthropic/Gemini/DeepSeek等兼容接口
 // @author       Septuagint,URL:https://Candy-spt.com/
 // @match        *://*/*
@@ -51,12 +51,12 @@
        API 预设
     ================================================ */
     const PRESETS = [
-       { id: 'openai',    name: 'OpenAI',    url: 'https://api.openai.com/v1/chat/completions',                                               model: 'gpt-5.5' },
-       { id: 'anthropic', name: 'Anthropic', url: 'https://api.anthropic.com/v1/messages',                                                    model: 'claude-opus-4.7' },
-       { id: 'gemini',    name: 'Gemini',    url: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}',model: 'gemini-3.1-pro-preview' },
-       { id: 'xai',       name: 'xAI',       url: 'https://api.x.ai/v1/chat/completions',                                                     model: 'gork-4.3' },
-       { id: 'deepseek',  name: 'DeepSeek',  url: 'https://api.deepseek.com/v1/chat/completions',                                             model: 'deepseek-v4-pro' },
-       { id: 'openrouter',name: 'Openrouter',url: 'https://openrouter.ai/api/v1/chat/completions',                                            model: 'google/gemini-3.1-pro-preview' },
+        { id: 'openai',    name: 'OpenAI',    url: 'https://api.openai.com/v1/chat/completions',                                               model: 'gpt-5.5' },
+        { id: 'anthropic', name: 'Anthropic', url: 'https://api.anthropic.com/v1/messages',                                                    model: 'claude-opus-4.7' },
+        { id: 'gemini',    name: 'Gemini',    url: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}',model: 'gemini-3.1-pro-preview' },
+        { id: 'xai',       name: 'xAI',       url: 'https://api.x.ai/v1/chat/completions',                                                     model: 'gork-4.3' },
+        { id: 'deepseek',  name: 'DeepSeek',  url: 'https://api.deepseek.com/v1/chat/completions',                                             model: 'deepseek-v4-pro' },
+        { id: 'openrouter',name: 'Openrouter',url: 'https://openrouter.ai/api/v1/chat/completions',                                            model: 'google/gemini-3.1-pro-preview' },
     ];
 
     /* ================================================
@@ -112,200 +112,162 @@
     }
 
     function cleanText(t) {
-        return t
-            .replace(/[ \t]{2,}/g, ' ')
-            .replace(/\n{3,}/g, '\n\n')
-            .trim();
+        return t.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
     }
 
-/* ================================================
+    /* ================================================
    多提供商适配层
 ================================================ */
 
-function detectProvider(url) {
-    if (url.includes('anthropic.com'))return 'anthropic';
-    if (url.includes('generativelanguage.googleapis')) return 'gemini';
-    return 'openai'; 
-}
-
-function buildRequest(cfg, messages) {
-    const provider = detectProvider(cfg.apiUrl);
-
-    // ── Anthropic ──────────────────────────────────────────────────
-    if (provider === 'anthropic') {
-        return {
-            url: cfg.apiUrl,
-            headers: {
-                'Content-Type':      'application/json',
-                'x-api-key':         cfg.apiKey,
-                'anthropic-version': '2023-06-01',
-            },
-            body: JSON.stringify({
-                model:      cfg.model,
-                max_tokens: +cfg.maxTokens,
-                system:     cfg.systemPrompt,
-                messages:   messages,
-                stream:     cfg.stream,
-            }),
-        };
+    function detectProvider(url) {
+        if (url.includes('anthropic.com'))return 'anthropic';
+        if (url.includes('generativelanguage.googleapis')) return 'gemini';
+        return 'openai';
     }
 
-    // ── Gemini ──────────────────────────────────────────────────────
-    if (provider === 'gemini') {
-        let url = cfg.apiUrl
-            .replace('{model}', cfg.model)
-            .replace('{key}',cfg.apiKey);
-        if (cfg.stream) {
-            url = url.replace('generateContent', 'streamGenerateContent') + '&alt=sse';
-        }
-        
-        const contents = messages.map(m => ({
-            role: m.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: m.content }]
-        }));
+    function buildRequest(cfg, messages) {
+        const provider = detectProvider(cfg.apiUrl);
 
-        return {
-            url,
-            headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify({
-                contents: contents,
-                systemInstruction: {
-                    parts: [{ text: cfg.systemPrompt }],
-                },
-                generationConfig: {
-                    maxOutputTokens: +cfg.maxTokens,
-                    temperature:     +cfg.temperature,
-                },
-            }),
-        };
-    }
-
-    // ── OpenAI 兼容 ─────────────────────────────────────────────────
-    return {
-        url: cfg.apiUrl,
-        headers: {
-            'Content-Type':  'application/json',
-            'Authorization': `Bearer ${cfg.apiKey}`,
-        },
-        body: JSON.stringify({
-            model:       cfg.model,
-            messages: [
-                { role: 'system', content: cfg.systemPrompt },
-                ...messages
-            ],
-            max_tokens:  +cfg.maxTokens,
-            temperature: +cfg.temperature,
-            stream:       cfg.stream,
-        }),
-    };
-}
-
-function parseStreamChunk(provider, line) {
-    if (!line.startsWith('data:')) return null;
-    const raw = line.slice(5).trim();
-    if (!raw) return null;
-
-    try {
         if (provider === 'anthropic') {
-            const json = JSON.parse(raw);
-            if (json.type === 'message_stop') return '[DONE]';
-            if (json.type === 'content_block_delta' && json.delta?.type === 'text_delta') return json.delta.text;
-            return null;
+            return {
+                url: cfg.apiUrl,
+                headers: {
+                    'Content-Type':      'application/json',
+                    'x-api-key':         cfg.apiKey,
+                    'anthropic-version': '2023-06-01',
+                },
+                body: JSON.stringify({
+                    model:      cfg.model,
+                    max_tokens: +cfg.maxTokens,
+                    system:     cfg.systemPrompt,
+                    messages:   messages,
+                    stream:     cfg.stream,
+                }),
+            };
         }
 
         if (provider === 'gemini') {
-            return JSON.parse(raw).candidates?.[0]?.content?.parts?.[0]?.text || null;
+            let url = cfg.apiUrl.replace('{model}', cfg.model).replace('{key}',cfg.apiKey);
+            if (cfg.stream) url = url.replace('generateContent', 'streamGenerateContent') + '&alt=sse';
+
+            const contents = messages.map(m => ({
+                role: m.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: m.content }]
+            }));
+
+            return {
+                url,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: contents,
+                    systemInstruction: { parts: [{ text: cfg.systemPrompt }] },
+                    generationConfig: { maxOutputTokens: +cfg.maxTokens, temperature: +cfg.temperature },
+                }),
+            };
         }
 
-        if (raw === '[DONE]') return '[DONE]';
-        return JSON.parse(raw).choices?.[0]?.delta?.content || null;
-    } catch { return null; }
-}
-
-function parseFullResponse(provider, responseText) {
-    if (responseText.includes('data:')) {
-        let result = '';
-        for (const line of responseText.split('\n')) {
-            const delta = parseStreamChunk(provider, line.trim());
-            if (delta && delta !== '[DONE]') result += delta;
-        }
-        if (result) return result;
+        return {
+            url: cfg.apiUrl,
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cfg.apiKey}` },
+            body: JSON.stringify({
+                model: cfg.model,
+                messages: [{ role: 'system', content: cfg.systemPrompt }, ...messages],
+                max_tokens: +cfg.maxTokens, temperature: +cfg.temperature, stream: cfg.stream,
+            }),
+        };
     }
-    try {
-        const json = JSON.parse(responseText);
-        if (provider === 'anthropic') return json.content?.[0]?.text || '';
-        if (provider === 'gemini') return json.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        return json.choices?.[0]?.message?.content || '';
-    } catch { return ''; }
-}
 
-function parseErrorMsg(provider, responseText, status) {
-    let msg = `HTTP ${status}`;
-    try {
-        const json = JSON.parse(responseText);
-        msg = json.error?.message || msg;
-    } catch {}
-    return msg;
-}
+    function parseStreamChunk(provider, line) {
+        if (!line.startsWith('data:')) return null;
+        const raw = line.slice(5).trim();
+        if (!raw) return null;
+        try {
+            if (provider === 'anthropic') {
+                const json = JSON.parse(raw);
+                if (json.type === 'message_stop') return '[DONE]';
+                if (json.type === 'content_block_delta' && json.delta?.type === 'text_delta') return json.delta.text;
+                return null;
+            }
+            if (provider === 'gemini') return JSON.parse(raw).candidates?.[0]?.content?.parts?.[0]?.text || null;
+            if (raw === '[DONE]') return '[DONE]';
+            return JSON.parse(raw).choices?.[0]?.delta?.content || null;
+        } catch { return null; }
+    }
 
-/* ================================================
+    function parseFullResponse(provider, responseText) {
+        if (responseText.includes('data:')) {
+            let result = '';
+            for (const line of responseText.split('\n')) {
+                const delta = parseStreamChunk(provider, line.trim());
+                if (delta && delta !== '[DONE]') result += delta;
+            }
+            if (result) return result;
+        }
+        try {
+            const json = JSON.parse(responseText);
+            if (provider === 'anthropic') return json.content?.[0]?.text || '';
+            if (provider === 'gemini') return json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            return json.choices?.[0]?.message?.content || '';
+        } catch { return ''; }
+    }
+
+    function parseErrorMsg(provider, responseText, status) {
+        let msg = `HTTP ${status}`;
+        try {
+            const json = JSON.parse(responseText);
+            msg = json.error?.message || msg;
+        } catch {}
+        return msg;
+    }
+
+    /* ================================================
    API 调用主函数
 ================================================ */
-let _req = null;
+    let _req = null;
 
-function callAPI(messages, { onChunk, onDone, onError }) {
-    const cfg = Cfg.get();
-    if (!cfg.apiKey && !cfg.apiUrl.includes('{key}')) {
-        onError('未设置 API Key，请点击 ⚙️ 进行配置');
-        return;
-    }
+    function callAPI(messages, { onChunk, onDone, onError }) {
+        const cfg = Cfg.get();
+        if (!cfg.apiKey && !cfg.apiUrl.includes('{key}')) {
+            onError('未设置 API Key，请点击 ⚙️ 进行配置');
+            return;
+        }
 
-    const provider = detectProvider(cfg.apiUrl);
-    const reqCfg = buildRequest(cfg, messages);
+        const provider = detectProvider(cfg.apiUrl);
+        const reqCfg = buildRequest(cfg, messages);
 
-    let buffer = '', fullText = '', finished = false;
-    const finish = (text) => { if (!finished) { finished = true; onDone(text); } };
+        let buffer = '', fullText = '', finished = false;
+        const finish = (text) => { if (!finished) { finished = true; onDone(text); } };
 
-    _req = GM_xmlhttpRequest({
-        method:  'POST',
-        url:      reqCfg.url,
-        headers:  reqCfg.headers,
-        data:     reqCfg.body,
-        timeout:  90000,
-
-        onprogress: cfg.stream ? (ev) => {
-            const newPart = ev.responseText.slice(buffer.length);
-            buffer = ev.responseText;
-            for (const line of newPart.split('\n')) {
-                const delta = parseStreamChunk(provider, line.trim());
-                if (delta === '[DONE]') { finish(fullText); return; }
-                if (delta) { fullText += delta; onChunk(fullText); }
-            }
-        } : null,
-
-        onload(res) {
-            if (res.status < 200 || res.status >= 300) {
-                return onError(parseErrorMsg(provider, res.responseText, res.status));
-            }
-            if (!cfg.stream) {
-                fullText = parseFullResponse(provider, res.responseText);
-                onChunk(fullText);
-                finish(fullText);
-                return;
-            }
-            setTimeout(() => {
-                if (!fullText) {
-                    fullText = parseFullResponse(provider, res.responseText);
-                    if (fullText) onChunk(fullText);
+        _req = GM_xmlhttpRequest({
+            method:  'POST', url: reqCfg.url, headers: reqCfg.headers, data: reqCfg.body, timeout: 90000,
+            onprogress: cfg.stream ? (ev) => {
+                const newPart = ev.responseText.slice(buffer.length);
+                buffer = ev.responseText;
+                for (const line of newPart.split('\n')) {
+                    const delta = parseStreamChunk(provider, line.trim());
+                    if (delta === '[DONE]') { finish(fullText); return; }
+                    if (delta) { fullText += delta; onChunk(fullText); }
                 }
-                finish(fullText);
-            }, 0);
-        },
-
-        onerror:   () => onError('网络错误，请检查 API 地址与网络连接'),
-        ontimeout: () => onError('请求超时（90s），请检查网络或 API 服务状态'),
-    });
-}
+            } : null,
+            onload(res) {
+                if (res.status < 200 || res.status >= 300) return onError(parseErrorMsg(provider, res.responseText, res.status));
+                if (!cfg.stream) {
+                    fullText = parseFullResponse(provider, res.responseText);
+                    onChunk(fullText); finish(fullText);
+                    return;
+                }
+                setTimeout(() => {
+                    if (!fullText) {
+                        fullText = parseFullResponse(provider, res.responseText);
+                        if (fullText) onChunk(fullText);
+                    }
+                    finish(fullText);
+                }, 0);
+            },
+            onerror: () => onError('网络错误，请检查 API 地址与网络连接'),
+            ontimeout: () => onError('请求超时（90s），请检查网络或 API 服务状态'),
+        });
+    }
 
     /* ================================================
        简易 Markdown 渲染
@@ -318,9 +280,9 @@ function callAPI(messages, { onChunk, onDone, onError }) {
 
         for (const rawLine of lines) {
             let line = rawLine
-                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.+?)\*/g, '<em>$1</em>')
-                .replace(/`(.+?)`/g, '<code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:12px">$1</code>');
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.+?)\*/g, '<em>$1</em>')
+            .replace(/`(.+?)`/g, '<code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:12px">$1</code>');
 
             if (/^#{1,3} /.test(rawLine)) {
                 if (inUl) { html += '</ul>'; inUl = false; }
@@ -336,7 +298,6 @@ function callAPI(messages, { onChunk, onDone, onError }) {
 
             if (inUl) { html += '</ul>'; inUl = false; }
             if (!rawLine.trim()) { html += '<br>'; continue; }
-
             html += `<p style="margin:5px 0">${line}</p>`;
         }
         if (inUl) html += '</ul>';
@@ -393,7 +354,8 @@ function callAPI(messages, { onChunk, onDone, onError }) {
         #ais-fab:active { transform: scale(.95); }
 
         #ais-main, #ais-settings { position: fixed; right: 22px; bottom: 86px; z-index: 2147483640; width: 420px; background: #fff; border-radius: 18px; box-shadow: 0 8px 40px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.06); display: flex; flex-direction: column; overflow: hidden; transition: opacity .22s ease, transform .22s ease; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; }
-        .ais-hd { display: flex; align-items: center; gap: 6px; padding: 12px 14px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; flex-shrink: 0; }
+
+        .ais-hd { display: flex; align-items: center; gap: 6px; padding: 12px 14px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; flex-shrink: 0; cursor: move; user-select: none; }
         .ais-hd-title { flex: 1; font-size: 14px; font-weight: 600; }
         .ais-hbtn { background: rgba(255,255,255,.22); border: none; color: #fff; border-radius: 7px; padding: 4px 9px; cursor: pointer; font-size: 12px; white-space: nowrap; transition: background .15s; }
         .ais-hbtn:hover { background: rgba(255,255,255,.38); }
@@ -419,14 +381,12 @@ function callAPI(messages, { onChunk, onDone, onError }) {
         .ais-danger { background: #fee2e2; color: #dc2626; }
         .ais-danger:hover { background: #fecaca; }
 
-        /* 追问与对话样式 */
         .ais-chat-wrap { display: flex; flex: 1; gap: 8px; align-items: center; }
         .ais-chat-input { flex: 1; padding: 7px 10px; border: 1.5px solid #e5e7eb; border-radius: 8px; font-size: 13px; outline: none; background: #fafafa; transition: border-color .15s; }
         .ais-chat-input:focus { border-color: #6366f1; background: #fff; }
         .ais-btn-square { width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 8px; font-size: 15px; }
         .ais-user-msg { background: #f3f4f6; padding: 10px 12px; border-radius: 8px; margin: 16px 0 8px; font-size: 13px; color: #374151; word-break: break-word; border-left: 3px solid #9ca3af; }
 
-        /* ====== 设置面板 ====== */
         #ais-settings { max-height: 580px; }
         .ais-cfg-body { padding: 14px 16px; overflow-y: auto; flex: 1; }
         .ais-cfg-body::-webkit-scrollbar { width: 4px; }
@@ -453,8 +413,8 @@ function callAPI(messages, { onChunk, onDone, onError }) {
     let settingsOpen = false;
     let streaming = false;
     let fullText = '';
-    let chatHistory = [];       // 保存对话历史记录
-    let currentResNode = null;  // 指向当前正在渲染的回复节点
+    let chatHistory = [];
+    let currentResNode = null;
 
     /* ================================================
        构建主面板 HTML
@@ -476,9 +436,7 @@ function callAPI(messages, { onChunk, onDone, onError }) {
             </div>
             <div class="ais-meta" id="ais-meta">${esc(document.title)}</div>
             <div class="ais-body" id="ais-body">
-                <div class="ais-ph">
-                    点击下方「开始总结」按钮<br>AI 将自动提取并分析当前页面内容 📖
-                </div>
+                <div class="ais-ph">点击下方「开始总结」按钮<br>AI 将自动提取并分析当前页面内容 📖</div>
             </div>
             <div class="ais-ft" id="ais-ft-actions">
                 <button class="ais-btn ais-danger" id="ais-stop" style="display:none">⏹ 停止</button>
@@ -505,7 +463,7 @@ function callAPI(messages, { onChunk, onDone, onError }) {
             document.body.appendChild(s);
         }
         s.innerHTML = `
-            <div class="ais-hd">
+            <div class="ais-hd" style="cursor:default;">
                 <span class="ais-hd-title">⚙️ API 设置</span>
                 <button class="ais-hbtn" id="ais-cfg-close">✕</button>
             </div>
@@ -534,26 +492,79 @@ function callAPI(messages, { onChunk, onDone, onError }) {
                     <input class="ais-inp" id="f-maxlen" type="number" value="${cfg.maxContentLength}" min="1000" max="50000">
                 </div>
                 <div class="ais-field">
-                    <div class="ais-row">
-                        <label class="ais-lbl" style="margin:0">流式输出（Stream）</label>
-                        <button class="ais-sw ${cfg.stream ? 'on' : ''}" id="f-stream"></button>
-                    </div>
+                    <div class="ais-row"><label class="ais-lbl" style="margin:0">流式输出（Stream）</label><button class="ais-sw ${cfg.stream ? 'on' : ''}" id="f-stream"></button></div>
                 </div>
-                <div class="ais-field">
-                    <label class="ais-lbl">系统提示词（System Prompt）</label>
-                    <textarea class="ais-ta" id="f-sys">${esc(cfg.systemPrompt)}</textarea>
-                </div>
-                <div class="ais-field">
-                    <label class="ais-lbl">用户提示词（变量：{title} {content}）</label>
-                    <textarea class="ais-ta" id="f-prompt" style="min-height:140px">${esc(cfg.userPrompt)}</textarea>
-                </div>
+                <div class="ais-field"><label class="ais-lbl">系统提示词</label><textarea class="ais-ta" id="f-sys">${esc(cfg.systemPrompt)}</textarea></div>
+                <div class="ais-field"><label class="ais-lbl">用户提示词</label><textarea class="ais-ta" id="f-prompt" style="min-height:140px">${esc(cfg.userPrompt)}</textarea></div>
             </div>
             <div class="ais-ft">
                 <button class="ais-btn ais-secondary" id="ais-cfg-reset">↩ 恢复默认</button>
-                <button class="ais-btn ais-primary"   id="ais-cfg-save">💾 保存设置</button>
+                <button class="ais-btn ais-primary" id="ais-cfg-save">💾 保存设置</button>
             </div>
         `;
         bindSettingsEvents();
+    }
+
+    /* ================================================
+       使面板可拖动
+    ================================================ */
+    function makeDraggable(panelId) {
+        const panel = $(panelId);
+        const hd = panel.querySelector('.ais-hd');
+        let isDragging = false, offset = { x: 0, y: 0 };
+
+        hd.addEventListener('mousedown', (e) => {
+            if (e.target.tagName.toLowerCase() === 'button') return;
+            isDragging = true;
+            const rect = panel.getBoundingClientRect();
+            offset.x = e.clientX - rect.left;
+            offset.y = e.clientY - rect.top;
+            panel.style.transition = 'none';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            let left = e.clientX - offset.x;
+            let top = e.clientY - offset.y;
+            left = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, left));
+            top = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, top));
+
+            panel.style.left = left + 'px';
+            panel.style.top = top + 'px';
+            panel.style.right = 'auto';
+            panel.style.bottom = 'auto';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                panel.style.transition = 'opacity .22s ease, transform .22s ease';
+            }
+        });
+    }
+
+    /* ================================================
+       动态定位主面板（跟随悬浮按钮）
+    ================================================ */
+    function positionMainPanelBasedOnFab() {
+        const fab = $('ais-fab');
+        const mainPanel = $('ais-main');
+        const fabRect = fab.getBoundingClientRect();
+        const isLeft = fabRect.left < window.innerWidth / 2;
+
+        mainPanel.style.right = 'auto';
+        mainPanel.style.bottom = 'auto';
+
+        let leftPos = isLeft ? (fabRect.right + 15) : (fabRect.left - 420 - 15);
+        leftPos = Math.max(10, Math.min(window.innerWidth - 420 - 10, leftPos));
+        mainPanel.style.left = leftPos + 'px';
+
+        let estimatedMaxHeight = 450;
+        let topPos = fabRect.top;
+        if (topPos + estimatedMaxHeight > window.innerHeight) {
+            topPos = window.innerHeight - estimatedMaxHeight - 20;
+        }
+        mainPanel.style.top = Math.max(10, topPos) + 'px';
     }
 
     /* ================================================
@@ -561,7 +572,7 @@ function callAPI(messages, { onChunk, onDone, onError }) {
     ================================================ */
     function bindMainEvents() {
         const PEEK_LEFT = 16, PEEK_RIGHT = 24, DRAG_THRESHOLD = 8;
-        const fab = document.getElementById('ais-fab');
+        const fab = $('ais-fab');
         let isDragging = false, hasMoved = false;
         window.snapSide = 'right';
         let offset = { x: 0, y: 0 }, startPos = { x: 0, y: 0 };
@@ -577,21 +588,16 @@ function callAPI(messages, { onChunk, onDone, onError }) {
         document.addEventListener('mousemove', (e) => {
             if (!isDragging) return;
             const dx = e.clientX - startPos.x, dy = e.clientY - startPos.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            if (!hasMoved && distance > DRAG_THRESHOLD) {
+            if (!hasMoved && Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
                 hasMoved = true; fab.style.transition = 'all 0.12s ease-out';
-                fab.style.left = (e.clientX - offset.x) + 'px';
-                fab.style.top = (e.clientY - offset.y) + 'px';
+                fab.style.left = (e.clientX - offset.x) + 'px'; fab.style.top = (e.clientY - offset.y) + 'px';
                 return;
             }
             if (!hasMoved) return;
             fab.style.transition = 'none';
 
-            let left = e.clientX - offset.x, top = e.clientY - offset.y;
-            const padding = 10;
-            left = Math.max(padding, Math.min(window.innerWidth - fab.offsetWidth - padding, left));
-            top = Math.max(padding, Math.min(window.innerHeight - fab.offsetHeight - padding, top));
+            let left = Math.max(10, Math.min(window.innerWidth - fab.offsetWidth - 10, e.clientX - offset.x));
+            let top = Math.max(10, Math.min(window.innerHeight - fab.offsetHeight - 10, e.clientY - offset.y));
 
             fab.style.left = left + 'px'; fab.style.top = top + 'px';
             fab.style.right = 'auto'; fab.style.bottom = 'auto';
@@ -604,11 +610,8 @@ function callAPI(messages, { onChunk, onDone, onError }) {
 
             const rect = fab.getBoundingClientRect();
             const isLeft = rect.left < window.innerWidth / 2;
-            const padding = 10;
-            const targetLeft = isLeft ? -(fab.offsetWidth - PEEK_LEFT) + padding : window.innerWidth - PEEK_RIGHT - padding;
-
             fab.style.transition = 'all 0.35s cubic-bezier(0.25, 1.4, 0.4, 1)';
-            fab.style.left = targetLeft + 'px';
+            fab.style.left = (isLeft ? -(fab.offsetWidth - PEEK_LEFT) + 10 : window.innerWidth - PEEK_RIGHT - 10) + 'px';
             fab.style.top = rect.top + 'px';
 
             GM_setValue('fab_position', { xRatio: rect.left / window.innerWidth, yRatio: rect.top / window.innerHeight });
@@ -617,24 +620,24 @@ function callAPI(messages, { onChunk, onDone, onError }) {
 
         fab.addEventListener('mouseenter', () => {
             const rect = fab.getBoundingClientRect();
-            const padding = 10, expandOffset = padding * 1.5;
             fab.style.transition = 'all 0.25s ease-out';
-            if (rect.left < window.innerWidth / 2) fab.style.left = expandOffset + 'px';
-            else fab.style.left = (window.innerWidth - fab.offsetWidth - expandOffset) + 'px';
+            if (rect.left < window.innerWidth / 2) fab.style.left = 15 + 'px';
+            else fab.style.left = (window.innerWidth - fab.offsetWidth - 15) + 'px';
         });
 
         fab.addEventListener('mouseleave', () => {
             if (isDragging) return;
             const rect = fab.getBoundingClientRect();
-            const padding = 10;
             fab.style.transition = 'all 0.3s cubic-bezier(0.25, 1.4, 0.4, 1)';
-            if (rect.left < window.innerWidth / 2) fab.style.left = -(fab.offsetWidth - PEEK_LEFT) + padding + 'px';
-            else fab.style.left = (window.innerWidth - PEEK_RIGHT - padding) + 'px';
+            if (rect.left < window.innerWidth / 2) fab.style.left = -(fab.offsetWidth - PEEK_LEFT) + 10 + 'px';
+            else fab.style.left = (window.innerWidth - PEEK_RIGHT - 10) + 'px';
         });
 
         fab.addEventListener('click', (e) => {
             if (hasMoved) { e.preventDefault(); e.stopPropagation(); return; }
-            panelOpen = !panelOpen; toggle('ais-main', panelOpen);
+            panelOpen = !panelOpen;
+            if (panelOpen) positionMainPanelBasedOnFab(); // 动态计算跟随位置
+            toggle('ais-main', panelOpen);
             if (!panelOpen) { settingsOpen = false; toggle('ais-settings', false); }
         });
 
@@ -644,41 +647,42 @@ function callAPI(messages, { onChunk, onDone, onError }) {
         });
 
         $('ais-cfg-open').addEventListener('click', () => {
-            settingsOpen = !settingsOpen; toggle('ais-settings', settingsOpen);
+            settingsOpen = !settingsOpen;
+            if (settingsOpen) {
+                // 基于主面板当前位置生成设置窗口
+                const mainRect = $('ais-main').getBoundingClientRect();
+                const sPanel = $('ais-settings');
+                sPanel.style.right = 'auto';
+                sPanel.style.bottom = 'auto';
+                sPanel.style.left = mainRect.left + 'px';
+                sPanel.style.top = mainRect.top + 'px';
+            }
+            toggle('ais-settings', settingsOpen);
         });
 
         $('ais-copy').addEventListener('click', () => {
             if (!fullText) { showToast('暂无内容可复制'); return; }
-            navigator.clipboard.writeText(fullText)
-                .then(() => showToast('✓ 已复制到剪贴板', '#16a34a'))
-                .catch(() => showToast('复制失败，请手动选择'));
+            navigator.clipboard.writeText(fullText).then(() => showToast('✓ 已复制到剪贴板', '#16a34a')).catch(() => showToast('复制失败，请手动选择'));
         });
 
         $('ais-stop').addEventListener('click', () => {
-            abortAPI();
-            streaming = false;
-            setLoading(false);
+            abortAPI(); streaming = false; setLoading(false);
             if (currentResNode) {
                 currentResNode.innerHTML = renderMd(fullText || '已手动停止');
-                currentResNode.classList.remove('ais-cursor');
-                currentResNode.removeAttribute('id');
+                currentResNode.classList.remove('ais-cursor'); currentResNode.removeAttribute('id');
             }
             if (chatHistory.length > 0) {
                 if (fullText) chatHistory.push({ role: 'assistant', content: fullText });
-                $('ais-run').style.display = 'none';
-                $('ais-chat-wrap').style.display = 'flex';
+                $('ais-run').style.display = 'none'; $('ais-chat-wrap').style.display = 'flex';
             } else {
-                $('ais-run').style.display = '';
-                $('ais-run').textContent = '🔄 重新总结';
+                $('ais-run').style.display = ''; $('ais-run').textContent = '🔄 重新总结';
             }
         });
 
         $('ais-run').addEventListener('click', doSummary);
         $('ais-re-run').addEventListener('click', doSummary);
         $('ais-chat-send').addEventListener('click', doFollowUp);
-        $('ais-chat-input').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); doFollowUp(); }
-        });
+        $('ais-chat-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doFollowUp(); } });
     }
 
     function bindSettingsEvents() {
@@ -689,16 +693,11 @@ function callAPI(messages, { onChunk, onDone, onError }) {
             const savedKey = $('f-key').value.trim();
             const matchedPreset = PRESETS.find(p => savedUrl === p.url);
             if (matchedPreset && savedKey) GM_setValue('apiKey_' + matchedPreset.id, savedKey);
-            
+
             Cfg.set({
-                apiUrl:           savedUrl,
-                apiKey:           savedKey,
-                model:            $('f-model').value.trim(),
-                maxTokens:        +$('f-tokens').value || 2000,
-                maxContentLength: +$('f-maxlen').value || 8000,
-                stream:           $('f-stream').classList.contains('on'),
-                systemPrompt:     $('f-sys').value,
-                userPrompt:       $('f-prompt').value,
+                apiUrl: savedUrl, apiKey: savedKey, model: $('f-model').value.trim(),
+                maxTokens: +$('f-tokens').value || 2000, maxContentLength: +$('f-maxlen').value || 8000,
+                stream: $('f-stream').classList.contains('on'), systemPrompt: $('f-sys').value, userPrompt: $('f-prompt').value,
             });
             settingsOpen = false; toggle('ais-settings', false);
             showToast('✓ 设置已保存', '#16a34a');
@@ -710,15 +709,10 @@ function callAPI(messages, { onChunk, onDone, onError }) {
         });
 
         $('f-stream').addEventListener('click', e => e.currentTarget.classList.toggle('on'));
-
         document.querySelectorAll('.ais-pre').forEach(btn => {
             btn.addEventListener('click', () => {
                 const p = PRESETS.find(x => x.id === btn.dataset.pid);
-                if (p) {
-                    $('f-url').value = p.url;
-                    $('f-model').value = p.model;
-                    $('f-key').value = GM_getValue('apiKey_' + p.id, '');
-                }
+                if (p) { $('f-url').value = p.url; $('f-model').value = p.model; $('f-key').value = GM_getValue('apiKey_' + p.id, ''); }
             });
         });
     }
@@ -728,70 +722,36 @@ function callAPI(messages, { onChunk, onDone, onError }) {
     ================================================ */
     function doSummary() {
         if (streaming) return;
-        streaming = true;
-        fullText = '';
-        chatHistory = []; // 重置对话历史
-        
-        $('ais-run').style.display = '';
-        $('ais-run').textContent = '✨ 开始总结';
-        $('ais-chat-wrap').style.display = 'none';
+        streaming = true; fullText = ''; chatHistory = [];
+        $('ais-run').style.display = ''; $('ais-run').textContent = '✨ 开始总结'; $('ais-chat-wrap').style.display = 'none';
+        setLoading(true); setBody(`<div class="ais-loading"><div class="ais-spinner"></div> 正在提取页面内容...</div>`);
 
-        setLoading(true);
-        setBody(`<div class="ais-loading"><div class="ais-spinner"></div> 正在提取页面内容...</div>`);
-
-        const content = extractContent();
-        const title= document.title;
-        const cfg = Cfg.get();
-
+        const content = extractContent(); const title= document.title; const cfg = Cfg.get();
         if (!content || content.length < 50) {
-            streaming = false; setLoading(false);
-            setBody(`<div class="ais-err">❌ 页面内容提取失败或内容过少，请在有文章内容的页面使用</div>`);
-            $('ais-run').style.display = '';
-            return;
+            streaming = false; setLoading(false); setBody(`<div class="ais-err">❌ 页面内容提取失败或内容过少</div>`);
+            $('ais-run').style.display = ''; return;
         }
 
-        const metaEl = $('ais-meta');
-        if (metaEl) metaEl.textContent = `📄 ${esc(title)}  ·  提取 ${content.length} 字`;
-
-        const userMsg = cfg.userPrompt
-            .replace('{title}', title)
-            .replace('{content}', String(content).slice(0, cfg.maxContentLength));
-
+        const metaEl = $('ais-meta'); if (metaEl) metaEl.textContent = `📄 ${esc(title)}  ·  提取 ${content.length} 字`;
+        const userMsg = cfg.userPrompt.replace('{title}', title).replace('{content}', String(content).slice(0, cfg.maxContentLength));
         chatHistory.push({ role: 'user', content: userMsg });
-
         setBody(`<div id="ais-current-res" class="ais-res ais-cursor"><div class="ais-loading" style="padding:10px 0;"><div class="ais-spinner"></div> AI 正在分析...</div></div>`);
         currentResNode = $('ais-current-res');
 
         callAPI(chatHistory, {
             onChunk(full) {
                 fullText = full;
-                if (currentResNode) {
-                    currentResNode.innerHTML = renderMd(full);
-                    const b = $('ais-body');
-                    if (b) b.scrollTop = b.scrollHeight;
-                }
+                if (currentResNode) { currentResNode.innerHTML = renderMd(full); const b = $('ais-body'); if (b) b.scrollTop = b.scrollHeight; }
             },
             onDone(full) {
-                streaming = false;
-                setLoading(false);
-                fullText = full;
-                if (currentResNode) {
-                    currentResNode.innerHTML = renderMd(full || '（AI 返回内容为空）');
-                    currentResNode.classList.remove('ais-cursor');
-                    currentResNode.removeAttribute('id');
-                }
+                streaming = false; setLoading(false); fullText = full;
+                if (currentResNode) { currentResNode.innerHTML = renderMd(full || '（AI 返回内容为空）'); currentResNode.classList.remove('ais-cursor'); currentResNode.removeAttribute('id'); }
                 chatHistory.push({ role: 'assistant', content: full });
-                // 切换为追问面板
-                $('ais-run').style.display = 'none';
-                $('ais-chat-wrap').style.display = 'flex';
-                $('ais-chat-input').focus();
+                $('ais-run').style.display = 'none'; $('ais-chat-wrap').style.display = 'flex'; $('ais-chat-input').focus();
             },
             onError(err) {
-                streaming = false;
-                setLoading(false);
-                setBody(`<div class="ais-err">❌ ${esc(err)}</div>`);
-                $('ais-run').style.display = '';
-                $('ais-run').textContent = '🔄 重新总结';
+                streaming = false; setLoading(false); setBody(`<div class="ais-err">❌ ${esc(err)}</div>`);
+                $('ais-run').style.display = ''; $('ais-run').textContent = '🔄 重新总结';
             },
         });
     }
@@ -801,60 +761,31 @@ function callAPI(messages, { onChunk, onDone, onError }) {
     ================================================ */
     function doFollowUp() {
         if (streaming) return;
-        const inputEl = $('ais-chat-input');
-        const question = inputEl.value.trim();
+        const inputEl = $('ais-chat-input'); const question = inputEl.value.trim();
         if (!question) return;
 
-        inputEl.value = '';
-        streaming = true;
-        fullText = '';
-
-        setLoading(true);
-
+        inputEl.value = ''; streaming = true; fullText = ''; setLoading(true);
         const b = $('ais-body');
-        b.insertAdjacentHTML('beforeend', `
-            <div class="ais-user-msg">👤 ${esc(question)}</div>
-            <div id="ais-current-res" class="ais-res ais-cursor">正在思考...</div>
-        `);
-        currentResNode = $('ais-current-res');
-        b.scrollTop = b.scrollHeight;
-
+        b.insertAdjacentHTML('beforeend', `<div class="ais-user-msg">👤 ${esc(question)}</div><div id="ais-current-res" class="ais-res ais-cursor">正在思考...</div>`);
+        currentResNode = $('ais-current-res'); b.scrollTop = b.scrollHeight;
         chatHistory.push({ role: 'user', content: question });
 
         callAPI(chatHistory, {
             onChunk(full) {
                 fullText = full;
-                if (currentResNode) {
-                    currentResNode.innerHTML = renderMd(full);
-                    if (b) b.scrollTop = b.scrollHeight;
-                }
+                if (currentResNode) { currentResNode.innerHTML = renderMd(full); if (b) b.scrollTop = b.scrollHeight; }
             },
             onDone(full) {
-                streaming = false;
-                setLoading(false);
-                fullText = full;
-                if (currentResNode) {
-                    currentResNode.innerHTML = renderMd(full || '（AI 返回内容为空）');
-                    currentResNode.classList.remove('ais-cursor');
-                    currentResNode.removeAttribute('id');
-                    if (b) b.scrollTop = b.scrollHeight;
-                }
+                streaming = false; setLoading(false); fullText = full;
+                if (currentResNode) { currentResNode.innerHTML = renderMd(full || '（AI 返回内容为空）'); currentResNode.classList.remove('ais-cursor'); currentResNode.removeAttribute('id'); if (b) b.scrollTop = b.scrollHeight; }
                 chatHistory.push({ role: 'assistant', content: full });
-                $('ais-run').style.display = 'none';
-                $('ais-chat-wrap').style.display = 'flex';
-                $('ais-chat-input').focus();
+                $('ais-run').style.display = 'none'; $('ais-chat-wrap').style.display = 'flex'; $('ais-chat-input').focus();
             },
             onError(err) {
-                streaming = false;
-                setLoading(false);
-                if (currentResNode) {
-                    currentResNode.outerHTML = `<div class="ais-err" style="margin-top:10px;">❌ ${esc(err)}</div>`;
-                    if (b) b.scrollTop = b.scrollHeight;
-                }
-                chatHistory.pop(); // 移除失败的追问
-                inputEl.value = question; // 恢复输入框内容方便重试
-                $('ais-run').style.display = 'none';
-                $('ais-chat-wrap').style.display = 'flex';
+                streaming = false; setLoading(false);
+                if (currentResNode) { currentResNode.outerHTML = `<div class="ais-err" style="margin-top:10px;">❌ ${esc(err)}</div>`; if (b) b.scrollTop = b.scrollHeight; }
+                chatHistory.pop(); inputEl.value = question;
+                $('ais-run').style.display = 'none'; $('ais-chat-wrap').style.display = 'flex';
             }
         });
     }
@@ -873,8 +804,7 @@ function callAPI(messages, { onChunk, onDone, onError }) {
                 fab.style.left = (pos.xRatio * window.innerWidth) + 'px';
                 fab.style.top = (pos.yRatio * window.innerHeight) + 'px';
             } else {
-                fab.style.left = pos.left; fab.style.top = pos.top;
-                fab.style.right = pos.right; fab.style.bottom = pos.bottom;
+                fab.style.left = pos.left; fab.style.top = pos.top; fab.style.right = pos.right; fab.style.bottom = pos.bottom;
             }
         } else {
             fab.style.right = '22px'; fab.style.bottom = '22px';
@@ -903,11 +833,31 @@ function callAPI(messages, { onChunk, onDone, onError }) {
         settingsPanel.id = 'ais-settings'; settingsPanel.className = 'ais-off';
         document.body.appendChild(mainPanel); document.body.appendChild(settingsPanel);
 
-        renderSettings(Cfg.get()); bindMainEvents();
+        renderSettings(Cfg.get());
+        bindMainEvents();
+        makeDraggable('ais-main'); // 激活拖动
     }
 
-    GM_registerMenuCommand('🤖 AI 总结当前页面', () => { panelOpen = true; toggle('ais-main', true); doSummary(); });
-    GM_registerMenuCommand('⚙️ AI 总结器设置', () => { panelOpen = true; toggle('ais-main', true); settingsOpen = true; toggle('ais-settings', true); });
+    GM_registerMenuCommand('🤖 AI 总结当前页面', () => {
+        panelOpen = true;
+        positionMainPanelBasedOnFab();
+        toggle('ais-main', true);
+        doSummary();
+    });
+    GM_registerMenuCommand('⚙️ AI 总结器设置', () => {
+        panelOpen = true;
+        positionMainPanelBasedOnFab();
+        toggle('ais-main', true);
+        settingsOpen = true;
+
+        // 确保设置界面也原位置覆盖
+        const mainRect = $('ais-main').getBoundingClientRect();
+        const sPanel = $('ais-settings');
+        sPanel.style.right = 'auto'; sPanel.style.bottom = 'auto';
+        sPanel.style.left = mainRect.left + 'px'; sPanel.style.top = mainRect.top + 'px';
+
+        toggle('ais-settings', true);
+    });
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
     else init();
