@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI summary
 // @namespace    http://tampermonkey.net/
-// @version      2.2.1
+// @version      2.2.2
 // @description  一键抓取网页正文，通过 AI API 智能总结；支持 OpenAI/Anthropic/Gemini/DeepSeek等兼容接口
 // @author       Septuagint,URL:https://candy-spt.com/
 // @match        *://*/*
