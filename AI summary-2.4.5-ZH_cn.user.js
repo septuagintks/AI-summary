@@ -559,12 +559,19 @@
         leftPos = Math.max(10, Math.min(window.innerWidth - 420 - 10, leftPos));
         mainPanel.style.left = leftPos + 'px';
 
-        let estimatedMaxHeight = 450;
         let topPos = fabRect.top;
-        if (topPos + estimatedMaxHeight > window.innerHeight) {
-            topPos = window.innerHeight - estimatedMaxHeight - 20;
+
+        const panelHeight = mainPanel.offsetHeight || 420;
+
+        if (topPos + panelHeight > window.innerHeight) {
+            topPos = window.innerHeight - panelHeight - 8;
         }
-        mainPanel.style.top = Math.max(10, topPos) + 'px';
+
+        topPos = Math.max(8, topPos);
+
+        mainPanel.style.top = topPos + 'px';
+
+       mainPanel.style.top = Math.max(10, topPos) + 'px';
     }
 
     /* ================================================
@@ -652,10 +659,35 @@
                 // 基于主面板当前位置生成设置窗口
                 const mainRect = $('ais-main').getBoundingClientRect();
                 const sPanel = $('ais-settings');
+
                 sPanel.style.right = 'auto';
                 sPanel.style.bottom = 'auto';
-                sPanel.style.left = mainRect.left + 'px';
-                sPanel.style.top = mainRect.top + 'px';
+
+                let left = mainRect.left;
+                let top = mainRect.top;
+
+                sPanel.style.visibility = 'hidden';
+                sPanel.classList.remove('ais-off');
+
+                const rect = sPanel.getBoundingClientRect();
+                const width = rect.width;
+                const height = rect.height;
+
+                if (left + width > window.innerWidth) {
+                    left = window.innerWidth - width - 10;
+                }
+
+                if (top + height > window.innerHeight) {
+                    top = window.innerHeight - height - 20;
+                }
+
+                left = Math.max(10, left);
+                top = Math.max(10, top);
+
+                sPanel.style.left = left + 'px';
+                sPanel.style.top = top + 'px';
+
+                sPanel.style.visibility = '';
             }
             toggle('ais-settings', settingsOpen);
         });
