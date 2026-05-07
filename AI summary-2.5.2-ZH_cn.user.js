@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI summary
 // @namespace    http://tampermonkey.net/
-// @version      2.5.0
+// @version      2.5.2
 // @description  一键抓取网页正文，通过 AI API 智能总结；支持追问及多轮对话；支持 OpenAI/Anthropic/Gemini/DeepSeek等兼容接口
 // @author       Septuagint,URL:https://Candy-spt.com/
 // @match        *://*/*
@@ -93,7 +93,8 @@
   /* ================================================
        常量
     ================================================ */
-  const SNAP_PEEK = 8; // 悬浮按钮吸边后的露出像素
+  const SNAP_PEEK_L = 8; // 悬浮按钮吸边后的露出像素（左侧）
+  const SNAP_PEEK_R = 4; // 悬浮按钮吸边后的露出像素（右侧，滚动条补偿）
   const PANEL_W = 420; // 主面板宽度
   const MARGIN = 10; // 通用边距
 
@@ -502,20 +503,22 @@
         @keyframes ais-spin { to { transform: rotate(360deg); } }
         @keyframes ais-blink { 50% { opacity: 0; } }
         @keyframes ais-ti { from { opacity:0; transform:translateY(8px); } }
-        @keyframes ais-fab-click { 0%{transform:scale(1)} 30%{transform:scale(.82)} 65%{transform:scale(1.1)} 85%{transform:scale(.96)} 100%{transform:scale(1)} }
+        @keyframes ais-fab-click { 0%{transform:scale(.82)} 50%{transform:scale(1.1)} 75%{transform:scale(.96)} 100%{transform:scale(1)} }
 
         .ais-off { opacity: 0 !important; pointer-events: none !important; transform: translateY(10px) scale(.97) !important; }
 
-        #ais-fab { position: fixed; right: 22px; bottom: 22px; z-index: 2147483641; display: flex; align-items: center; justify-content: center; width: 35px; height: 35px; border-radius: 50%; background: linear-gradient(135deg, #F8F8F8, #F8F8F8); border: none; cursor: pointer; color: #fff; font-size: 24px; box-shadow: 1px 4px 18px rgba(125,125,125,.6); transition: transform .2s, box-shadow .2s; user-select: none; }
+        #ais-fab { position: fixed; right: 22px; bottom: 22px; z-index: 2147483641; display: flex; align-items: center; justify-content: center; width: 35px; height: 35px; border-radius: 50%; background: linear-gradient(135deg, #F8F8F8, #F8F8F8); border: none; cursor: pointer; color: #fff; font-size: 24px; box-shadow: 1px 4px 18px rgba(125,125,125,.6); transition: transform .18s, box-shadow .18s; user-select: none; }
         #ais-fab:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(150,150,150,.5); }
-        #ais-fab.ais-fab-clicking { animation: ais-fab-click 0.45s cubic-bezier(0.25,1.4,0.4,1) forwards; }
+        #ais-fab.ais-fab-pressing { transform: scale(.82) !important; transition: transform .08s ease-out !important; }
+        #ais-fab.ais-fab-clicking { animation: ais-fab-click 0.42s cubic-bezier(0.25,1.6,0.4,1) forwards; }
 
         #ais-main, #ais-settings { position: fixed; right: 22px; bottom: 86px; z-index: 2147483640; width: 420px; background: #fff; border-radius: 18px; box-shadow: 0 8px 40px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.06); display: flex; flex-direction: column; overflow: hidden; transition: opacity .22s ease, transform .22s ease; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; }
 
         .ais-hd { display: flex; align-items: center; gap: 6px; padding: 12px 14px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; flex-shrink: 0; cursor: move; user-select: none; }
         .ais-hd-title { flex: 1; font-size: 14px; font-weight: 600; }
-        .ais-hbtn { background: rgba(255,255,255,.22); border: none; color: #fff; border-radius: 7px; padding: 4px 9px; cursor: pointer; font-size: 12px; white-space: nowrap; transition: background .15s; }
+        .ais-hbtn { background: rgba(255,255,255,.22); border: none; color: #fff; border-radius: 7px; padding: 4px 9px; cursor: pointer; font-size: 12px; white-space: nowrap; transition: background .15s, transform .1s; }
         .ais-hbtn:hover { background: rgba(255,255,255,.38); }
+        .ais-hbtn:active { transform: scale(.88); }
         .ais-meta { padding: 6px 14px; font-size: 11px; color: #9ca3af; background: #fafafa; border-bottom: 1px solid #f3f4f6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
         .ais-body { flex: 1; overflow-y: auto; padding: 14px; min-height: 160px; max-height: 440px; scroll-behavior: smooth; }
         .ais-body::-webkit-scrollbar { width: 4px; }
@@ -533,15 +536,18 @@
         .ais-btn { flex: 1; padding: 8px; border: none; border-radius: 9px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all .15s; }
         .ais-primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; box-shadow: 0 2px 8px rgba(99,102,241,.3); }
         .ais-primary:hover { opacity: .88; transform: translateY(-1px); }
+        .ais-primary:active { transform: scale(.93) !important; opacity: 1; }
         .ais-secondary { background: #f3f4f6; color: #374151; }
         .ais-secondary:hover { background: #e5e7eb; }
+        .ais-secondary:active { transform: scale(.93); }
         .ais-danger { background: #fee2e2; color: #dc2626; }
         .ais-danger:hover { background: #fecaca; }
+        .ais-danger:active { transform: scale(.93); }
 
         .ais-chat-wrap { display: flex; flex: 1; gap: 8px; align-items: center; }
-        .ais-chat-input { flex: 1; padding: 7px 10px; border: 1.5px solid #e5e7eb; border-radius: 8px; font-size: 13px; outline: none; background: #fafafa; transition: border-color .15s; }
+        .ais-chat-input { flex: 1; padding: 7px 10px; border: 1.5px solid #e5e7eb; border-radius: 8px; font-size: 13px; color: #111; outline: none; background: #fafafa; transition: border-color .15s; }
         .ais-chat-input:focus { border-color: #6366f1; background: #fff; }
-        .ais-btn-square { width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 8px; font-size: 15px; }
+        .ais-btn-square { width: 30px; height: 30px; flex: none; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 8px; font-size: 14px; }
         .ais-user-msg { background: #f3f4f6; padding: 10px 12px; border-radius: 8px; margin: 16px 0 8px; font-size: 13px; color: #374151; word-break: break-word; border-left: 3px solid #9ca3af; }
 
         #ais-settings { max-height: 580px; }
@@ -556,6 +562,7 @@
         .ais-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
         .ais-pre { padding: 4px 11px; border: 1.5px solid #e0e7ff; background: #eef2ff; color: #4f46e5; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all .15s; }
         .ais-pre:hover { background: #6366f1; color: #fff; border-color: #6366f1; }
+        .ais-pre:active { transform: scale(.91); }
         .ais-row { display: flex; align-items: center; justify-content: space-between; }
         .ais-sw { position: relative; width: 40px; height: 22px; background: #d1d5db; border-radius: 11px; border: none; cursor: pointer; transition: background .2s; flex-shrink: 0; }
         .ais-sw.on { background: #6366f1; }
@@ -793,8 +800,8 @@
       fab.style.transition = "all 0.35s cubic-bezier(0.25, 1.4, 0.4, 1)";
       fab.style.left =
         (isLeft
-          ? -(fab.offsetWidth - SNAP_PEEK) + MARGIN
-          : window.innerWidth - SNAP_PEEK - MARGIN) + "px";
+          ? -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN
+          : window.innerWidth - SNAP_PEEK_R - MARGIN) + "px";
       fab.style.top = rect.top + "px";
 
       GM_setValue("fab_position", {
@@ -804,9 +811,28 @@
       window.snapSide = isLeft ? "left" : "right";
     });
 
+    // 悬浮按钮 hover 弹出 / 吸边 / 即时按压反馈
+    const FAB_HOVER_OUT = fab.offsetWidth + 20; // 侦测范围：超出此距离才吸边
     let isEntering = false,
-      enterTimer = null;
+      enterTimer = null,
+      leaveTimer = null;
+
+    fab.addEventListener("mousedown", () => {
+      fab.classList.add("ais-fab-pressing");
+    });
+    document.addEventListener(
+      "mouseup",
+      () => {
+        fab.classList.remove("ais-fab-pressing");
+      },
+      { capture: true },
+    );
+
     fab.addEventListener("mouseenter", () => {
+      if (leaveTimer) {
+        clearTimeout(leaveTimer);
+        leaveTimer = null;
+      }
       if (enterTimer) clearTimeout(enterTimer);
       isEntering = true;
       const rect = fab.getBoundingClientRect();
@@ -815,16 +841,20 @@
       else fab.style.left = window.innerWidth - fab.offsetWidth - 15 + "px";
       enterTimer = setTimeout(() => {
         isEntering = false;
-      }, 320);
+      }, 350);
     });
 
-    fab.addEventListener("mouseleave", () => {
+    fab.addEventListener("mouseleave", (e) => {
       if (isDragging || isEntering) return;
-      const rect = fab.getBoundingClientRect();
-      fab.style.transition = "all 0.3s cubic-bezier(0.25, 1.4, 0.4, 1)";
-      if (rect.left < window.innerWidth / 2)
-        fab.style.left = -(fab.offsetWidth - SNAP_PEEK) + MARGIN + "px";
-      else fab.style.left = window.innerWidth - SNAP_PEEK - MARGIN + "px";
+      // 仍在侦测范围内时（鼠标贴近边缘）不立即吸边，延迟执行
+      leaveTimer = setTimeout(() => {
+        leaveTimer = null;
+        const rect = fab.getBoundingClientRect();
+        fab.style.transition = "all 0.3s cubic-bezier(0.25, 1.4, 0.4, 1)";
+        if (rect.left < window.innerWidth / 2)
+          fab.style.left = -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN + "px";
+        else fab.style.left = window.innerWidth - SNAP_PEEK_R - MARGIN + "px";
+      }, 120);
     });
 
     fab.addEventListener("click", (e) => {
@@ -1145,8 +1175,8 @@
 
     const snapFab = () => {
       if (window.snapSide === "left")
-        fab.style.left = -(fab.offsetWidth - SNAP_PEEK) + MARGIN + "px";
-      else fab.style.left = window.innerWidth - SNAP_PEEK - MARGIN + "px";
+        fab.style.left = -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN + "px";
+      else fab.style.left = window.innerWidth - SNAP_PEEK_R - MARGIN + "px";
     };
 
     window.addEventListener("resize", () => {
