@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI summary
 // @namespace    http://tampermonkey.net/
-// @version      2.5.2
+// @version      2.5.3
 // @description  一键抓取网页正文，通过 AI API 智能总结；支持追问及多轮对话；支持 OpenAI/Anthropic/Gemini/DeepSeek等兼容接口
 // @author       Septuagint,URL:https://Candy-spt.com/
 // @match        *://*/*
@@ -94,7 +94,10 @@
        常量
     ================================================ */
   const SNAP_PEEK_L = 8; // 悬浮按钮吸边后的露出像素（左侧）
-  const SNAP_PEEK_R = 4; // 悬浮按钮吸边后的露出像素（右侧，滚动条补偿）
+  const SNAP_PEEK_R = 12; // 悬浮按钮吸边后的露出像素（右侧，比左侧多露4px）
+  // 动态获取滚动条宽度，用于右侧吸边时补偿视觉深度
+  const scrollbarW = () =>
+    window.innerWidth - document.documentElement.clientWidth;
   const PANEL_W = 420; // 主面板宽度
   const MARGIN = 10; // 通用边距
 
@@ -801,7 +804,7 @@
       fab.style.left =
         (isLeft
           ? -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN
-          : window.innerWidth - SNAP_PEEK_R - MARGIN) + "px";
+          : window.innerWidth - SNAP_PEEK_R - MARGIN - scrollbarW()) + "px";
       fab.style.top = rect.top + "px";
 
       GM_setValue("fab_position", {
@@ -853,7 +856,9 @@
         fab.style.transition = "all 0.3s cubic-bezier(0.25, 1.4, 0.4, 1)";
         if (rect.left < window.innerWidth / 2)
           fab.style.left = -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN + "px";
-        else fab.style.left = window.innerWidth - SNAP_PEEK_R - MARGIN + "px";
+        else
+          fab.style.left =
+            window.innerWidth - SNAP_PEEK_R - MARGIN - scrollbarW() + "px";
       }, 120);
     });
 
@@ -1176,7 +1181,9 @@
     const snapFab = () => {
       if (window.snapSide === "left")
         fab.style.left = -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN + "px";
-      else fab.style.left = window.innerWidth - SNAP_PEEK_R - MARGIN + "px";
+      else
+        fab.style.left =
+          window.innerWidth - SNAP_PEEK_R - MARGIN - scrollbarW() + "px";
     };
 
     window.addEventListener("resize", () => {
