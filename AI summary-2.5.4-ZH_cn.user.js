@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI summary
 // @namespace    http://tampermonkey.net/
-// @version      2.5.3
+// @version      2.5.4
 // @description  一键抓取网页正文，通过 AI API 智能总结；支持追问及多轮对话；支持 OpenAI/Anthropic/Gemini/DeepSeek等兼容接口
 // @author       Septuagint,URL:https://Candy-spt.com/
 // @match        *://*/*
@@ -335,6 +335,7 @@
     const reqCfg = buildRequest(cfg, messages);
 
     let buffer = "",
+      streamBuffer = "",
       fullText = "",
       finished = false;
     const finish = (text) => {
@@ -354,8 +355,12 @@
         ? (ev) => {
             const newPart = ev.responseText.slice(buffer.length);
             buffer = ev.responseText;
-            for (const line of newPart.split("\n")) {
-              const delta = parseStreamChunk(provider, line.trim());
+            if (!newPart) return;
+            streamBuffer += newPart;
+            const lines = streamBuffer.split("\n");
+            streamBuffer = lines.pop();
+            for (const rawLine of lines) {
+              const delta = parseStreamChunk(provider, rawLine.trim());
               if (delta === "[DONE]") {
                 finish(fullText);
                 return;
@@ -506,16 +511,16 @@
         @keyframes ais-spin { to { transform: rotate(360deg); } }
         @keyframes ais-blink { 50% { opacity: 0; } }
         @keyframes ais-ti { from { opacity:0; transform:translateY(8px); } }
-        @keyframes ais-fab-click { 0%{transform:scale(.82)} 50%{transform:scale(1.1)} 75%{transform:scale(.96)} 100%{transform:scale(1)} }
+        @keyframes ais-fab-click { 0% { transform: scale(.88); } 35% { transform: scale(1.08); } 65% { transform: scale(.98); } 100% { transform: scale(1); } }
 
-        .ais-off { opacity: 0 !important; pointer-events: none !important; transform: translateY(10px) scale(.97) !important; }
+        .ais-off { opacity: 0 !important; pointer-events: none !important; transform: translateY(16px) scale(.96) !important; filter: blur(0.4px) !important; }
 
-        #ais-fab { position: fixed; right: 22px; bottom: 22px; z-index: 2147483641; display: flex; align-items: center; justify-content: center; width: 35px; height: 35px; border-radius: 50%; background: linear-gradient(135deg, #F8F8F8, #F8F8F8); border: none; cursor: pointer; color: #fff; font-size: 24px; box-shadow: 1px 4px 18px rgba(125,125,125,.6); transition: transform .18s, box-shadow .18s; user-select: none; }
-        #ais-fab:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(150,150,150,.5); }
-        #ais-fab.ais-fab-pressing { transform: scale(.82) !important; transition: transform .08s ease-out !important; }
-        #ais-fab.ais-fab-clicking { animation: ais-fab-click 0.42s cubic-bezier(0.25,1.6,0.4,1) forwards; }
+        #ais-fab { position: fixed; right: 22px; bottom: 22px; z-index: 2147483641; display: flex; align-items: center; justify-content: center; width: 35px; height: 35px; border-radius: 50%; background: linear-gradient(135deg, #F8F8F8, #F8F8F8); border: none; cursor: pointer; color: #fff; font-size: 24px; box-shadow: 1px 4px 18px rgba(125,125,125,.6); transition: transform .26s cubic-bezier(0.22,1,0.36,1), box-shadow .26s ease, left .26s ease, top .26s ease; will-change: transform, left, top; user-select: none; }
+        #ais-fab:hover { transform: scale(1.08); box-shadow: 0 8px 28px rgba(130,130,130,.35); }
+        #ais-fab.ais-fab-pressing { transform: scale(.88) !important; transition: transform .12s ease-out !important; }
+        #ais-fab.ais-fab-clicking { animation: ais-fab-click 0.32s cubic-bezier(0.22,1,0.36,1) forwards; }
 
-        #ais-main, #ais-settings { position: fixed; right: 22px; bottom: 86px; z-index: 2147483640; width: 420px; background: #fff; border-radius: 18px; box-shadow: 0 8px 40px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.06); display: flex; flex-direction: column; overflow: hidden; transition: opacity .22s ease, transform .22s ease; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; }
+        #ais-main, #ais-settings { position: fixed; right: 22px; bottom: 86px; z-index: 2147483640; width: 420px; background: #fff; border-radius: 18px; box-shadow: 0 8px 40px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.06); display: flex; flex-direction: column; overflow: hidden; transition: opacity .32s cubic-bezier(.21,.61,.35,1), transform .32s cubic-bezier(.21,.61,.35,1), box-shadow .24s ease; transform-origin: top right; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; }
 
         .ais-hd { display: flex; align-items: center; gap: 6px; padding: 12px 14px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; flex-shrink: 0; cursor: move; user-select: none; }
         .ais-hd-title { flex: 1; font-size: 14px; font-weight: 600; }
@@ -675,20 +680,35 @@
   function makeDraggable(panelId) {
     const panel = $(panelId);
     const hd = panel.querySelector(".ais-hd");
-    let isDragging = false,
+    const DRAG_THRESHOLD = 8;
+    let isMouseDown = false,
+      isDragging = false,
+      start = { x: 0, y: 0 },
       offset = { x: 0, y: 0 };
 
     hd.addEventListener("mousedown", (e) => {
       if (e.target.tagName.toLowerCase() === "button") return;
-      isDragging = true;
+      isMouseDown = true;
+      isDragging = false;
       const rect = panel.getBoundingClientRect();
+      start.x = e.clientX;
+      start.y = e.clientY;
       offset.x = e.clientX - rect.left;
       offset.y = e.clientY - rect.top;
+      panel.style.left = rect.left + "px";
+      panel.style.top = rect.top + "px";
+      panel.style.right = "auto";
+      panel.style.bottom = "auto";
       panel.style.transition = "none";
     });
 
     document.addEventListener("mousemove", (e) => {
-      if (!isDragging) return;
+      if (!isMouseDown) return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      if (!isDragging && Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD) return;
+      if (!isDragging) isDragging = true;
+
       let left = e.clientX - offset.x;
       let top = e.clientY - offset.y;
       left = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, left));
@@ -696,15 +716,14 @@
 
       panel.style.left = left + "px";
       panel.style.top = top + "px";
-      panel.style.right = "auto";
-      panel.style.bottom = "auto";
     });
 
     document.addEventListener("mouseup", () => {
-      if (isDragging) {
-        isDragging = false;
-        panel.style.transition = "opacity .22s ease, transform .22s ease";
-      }
+      if (!isMouseDown) return;
+      isMouseDown = false;
+      if (!isDragging) return;
+      isDragging = false;
+      panel.style.transition = "opacity .22s ease, transform .22s ease";
     });
   }
 
