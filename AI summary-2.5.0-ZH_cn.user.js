@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI summary
 // @namespace    http://tampermonkey.net/
-// @version      2.4.8
+// @version      2.5.0
 // @description  一键抓取网页正文，通过 AI API 智能总结；支持追问及多轮对话；支持 OpenAI/Anthropic/Gemini/DeepSeek等兼容接口
 // @author       Septuagint,URL:https://Candy-spt.com/
 // @match        *://*/*
@@ -89,6 +89,13 @@
       model: "google/gemini-3.1-pro-preview",
     },
   ];
+
+  /* ================================================
+       常量
+    ================================================ */
+  const SNAP_PEEK = 8; // 悬浮按钮吸边后的露出像素
+  const PANEL_W = 420; // 主面板宽度
+  const MARGIN = 10; // 通用边距
 
   /* ================================================
        配置管理
@@ -308,15 +315,6 @@
     }
   }
 
-  function parseErrorMsg(provider, responseText, status) {
-    let msg = `HTTP ${status}`;
-    try {
-      const json = JSON.parse(responseText);
-      msg = json.error?.message || msg;
-    } catch {}
-    return msg;
-  }
-
   /* ================================================
    API 调用主函数
 ================================================ */
@@ -366,8 +364,13 @@
           }
         : null,
       onload(res) {
-        if (res.status < 200 || res.status >= 300)
-          return onError(parseErrorMsg(provider, res.responseText, res.status));
+        if (res.status < 200 || res.status >= 300) {
+          let msg = `HTTP ${res.status}`;
+          try {
+            msg = JSON.parse(res.responseText).error?.message || msg;
+          } catch {}
+          return onError(msg);
+        }
         if (!cfg.stream) {
           fullText = parseFullResponse(provider, res.responseText);
           onChunk(fullText);
@@ -385,6 +388,15 @@
       onerror: () => onError("网络错误，请检查 API 地址与网络连接"),
       ontimeout: () => onError("请求超时（90s），请检查网络或 API 服务状态"),
     });
+  }
+
+  /* ================================================
+       切换到对话模式（总结/追问完成后共用）
+    ================================================ */
+  function showChatMode() {
+    $("ais-run").style.display = "none";
+    $("ais-chat-wrap").style.display = "flex";
+    $("ais-chat-input").focus();
   }
 
   /* ================================================
@@ -603,13 +615,7 @@
        构建设置面板 HTML
     ================================================ */
   function renderSettings(cfg) {
-    let s = $("ais-settings");
-    if (!s) {
-      s = document.createElement("div");
-      s.id = "ais-settings";
-      s.className = "ais-off";
-      document.body.appendChild(s);
-    }
+    const s = $("ais-settings");
     s.innerHTML = `
             <div class="ais-hd" style="cursor:default;">
                 <span class="ais-hd-title">⚙️ API 设置</span>
@@ -704,32 +710,26 @@
     mainPanel.style.right = "auto";
     mainPanel.style.bottom = "auto";
 
-    let leftPos = isLeft ? fabRect.right + 15 : fabRect.left - 420 - 15;
-    leftPos = Math.max(10, Math.min(window.innerWidth - 420 - 10, leftPos));
+    let leftPos = isLeft ? fabRect.right + 15 : fabRect.left - PANEL_W - 15;
+    leftPos = Math.max(
+      MARGIN,
+      Math.min(window.innerWidth - PANEL_W - MARGIN, leftPos),
+    );
     mainPanel.style.left = leftPos + "px";
 
-    let topPos = fabRect.top;
-
-    const panelHeight = mainPanel.offsetHeight || 420;
-
-    if (topPos + panelHeight > window.innerHeight) {
-      topPos = window.innerHeight - panelHeight - 8;
-    }
-
-    topPos = Math.max(8, topPos);
-
+    const panelHeight = mainPanel.offsetHeight || PANEL_W;
+    let topPos = Math.max(
+      MARGIN,
+      Math.min(window.innerHeight - panelHeight - MARGIN, fabRect.top),
+    );
     mainPanel.style.top = topPos + "px";
-
-    mainPanel.style.top = Math.max(10, topPos) + "px";
   }
 
   /* ================================================
        事件绑定
     ================================================ */
   function bindMainEvents() {
-    const PEEK_LEFT = 8,
-      PEEK_RIGHT = 8,
-      DRAG_THRESHOLD = 8;
+    const DRAG_THRESHOLD = 8;
     const fab = $("ais-fab");
     let isDragging = false,
       hasMoved = false;
@@ -793,8 +793,8 @@
       fab.style.transition = "all 0.35s cubic-bezier(0.25, 1.4, 0.4, 1)";
       fab.style.left =
         (isLeft
-          ? -(fab.offsetWidth - PEEK_LEFT) + 10
-          : window.innerWidth - PEEK_RIGHT - 10) + "px";
+          ? -(fab.offsetWidth - SNAP_PEEK) + MARGIN
+          : window.innerWidth - SNAP_PEEK - MARGIN) + "px";
       fab.style.top = rect.top + "px";
 
       GM_setValue("fab_position", {
@@ -823,8 +823,8 @@
       const rect = fab.getBoundingClientRect();
       fab.style.transition = "all 0.3s cubic-bezier(0.25, 1.4, 0.4, 1)";
       if (rect.left < window.innerWidth / 2)
-        fab.style.left = -(fab.offsetWidth - PEEK_LEFT) + 10 + "px";
-      else fab.style.left = window.innerWidth - PEEK_RIGHT - 10 + "px";
+        fab.style.left = -(fab.offsetWidth - SNAP_PEEK) + MARGIN + "px";
+      else fab.style.left = window.innerWidth - SNAP_PEEK - MARGIN + "px";
     });
 
     fab.addEventListener("click", (e) => {
@@ -1046,9 +1046,7 @@
           currentResNode.removeAttribute("id");
         }
         chatHistory.push({ role: "assistant", content: full });
-        $("ais-run").style.display = "none";
-        $("ais-chat-wrap").style.display = "flex";
-        $("ais-chat-input").focus();
+        showChatMode();
         positionMainPanelBasedOnFab();
       },
       onError(err) {
@@ -1102,9 +1100,7 @@
           if (b) b.scrollTop = b.scrollHeight;
         }
         chatHistory.push({ role: "assistant", content: full });
-        $("ais-run").style.display = "none";
-        $("ais-chat-wrap").style.display = "flex";
-        $("ais-chat-input").focus();
+        showChatMode();
       },
       onError(err) {
         streaming = false;
@@ -1115,8 +1111,7 @@
         }
         chatHistory.pop();
         inputEl.value = question;
-        $("ais-run").style.display = "none";
-        $("ais-chat-wrap").style.display = "flex";
+        showChatMode();
       },
     });
   }
@@ -1148,24 +1143,26 @@
     }
     document.body.appendChild(fab);
 
+    const snapFab = () => {
+      if (window.snapSide === "left")
+        fab.style.left = -(fab.offsetWidth - SNAP_PEEK) + MARGIN + "px";
+      else fab.style.left = window.innerWidth - SNAP_PEEK - MARGIN + "px";
+    };
+
     window.addEventListener("resize", () => {
       const pos = GM_getValue("fab_position");
       if (!pos || pos.xRatio === undefined) return;
       fab.style.transition = "none";
       fab.style.top = pos.yRatio * window.innerHeight + "px";
-      if (pos && pos.xRatio !== undefined)
-        window.snapSide = pos.xRatio < 0.5 ? "left" : "right";
-      if (window.snapSide === "left")
-        fab.style.left = -(fab.offsetWidth - 8) + 10 + "px";
-      else fab.style.left = window.innerWidth - 8 - 10 + "px";
+      window.snapSide = pos.xRatio < 0.5 ? "left" : "right";
+      snapFab();
     });
 
     setTimeout(() => {
       const rect = fab.getBoundingClientRect();
       fab.style.transition = "none";
-      if (rect.left < window.innerWidth / 2)
-        fab.style.left = -(fab.offsetWidth - 8) + 10 + "px";
-      else fab.style.left = window.innerWidth - 8 - 10 + "px";
+      window.snapSide = rect.left < window.innerWidth / 2 ? "left" : "right";
+      snapFab();
     }, 50);
 
     const mainPanel = createMainPanel();
