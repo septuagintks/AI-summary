@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI summary
 // @namespace    http://tampermonkey.net/
-// @version      2.5.4
+// @version      2.5.5
 // @description  一键抓取网页正文，通过 AI API 智能总结；支持追问及多轮对话；支持 OpenAI/Anthropic/Gemini/DeepSeek等兼容接口
 // @author       Septuagint,URL:https://Candy-spt.com/
 // @match        *://*/*
@@ -388,7 +388,17 @@
         }
         setTimeout(() => {
           if (!fullText) {
-            fullText = parseFullResponse(provider, res.responseText);
+            const rawResp = res.responseText;
+            if (rawResp.includes("data:")) {
+              let result = "";
+              for (const line of rawResp.split("\n")) {
+                const delta = parseStreamChunk(provider, line.trim());
+                if (delta && delta !== "[DONE]") result += delta;
+              }
+              fullText = result || parseFullResponse(provider, rawResp);
+            } else {
+              fullText = parseFullResponse(provider, rawResp);
+            }
             if (fullText) onChunk(fullText);
           }
           finish(fullText);
@@ -511,14 +521,14 @@
         @keyframes ais-spin { to { transform: rotate(360deg); } }
         @keyframes ais-blink { 50% { opacity: 0; } }
         @keyframes ais-ti { from { opacity:0; transform:translateY(8px); } }
-        @keyframes ais-fab-click { 0% { transform: scale(.88); } 35% { transform: scale(1.08); } 65% { transform: scale(.98); } 100% { transform: scale(1); } }
+        @keyframes ais-fab-click { 0% { transform: scale(.88); } 100% { transform: scale(1); } }
 
         .ais-off { opacity: 0 !important; pointer-events: none !important; transform: translateY(16px) scale(.96) !important; filter: blur(0.4px) !important; }
 
         #ais-fab { position: fixed; right: 22px; bottom: 22px; z-index: 2147483641; display: flex; align-items: center; justify-content: center; width: 35px; height: 35px; border-radius: 50%; background: linear-gradient(135deg, #F8F8F8, #F8F8F8); border: none; cursor: pointer; color: #fff; font-size: 24px; box-shadow: 1px 4px 18px rgba(125,125,125,.6); transition: transform .26s cubic-bezier(0.22,1,0.36,1), box-shadow .26s ease, left .26s ease, top .26s ease; will-change: transform, left, top; user-select: none; }
         #ais-fab:hover { transform: scale(1.08); box-shadow: 0 8px 28px rgba(130,130,130,.35); }
         #ais-fab.ais-fab-pressing { transform: scale(.88) !important; transition: transform .12s ease-out !important; }
-        #ais-fab.ais-fab-clicking { animation: ais-fab-click 0.32s cubic-bezier(0.22,1,0.36,1) forwards; }
+        #ais-fab.ais-fab-clicking { animation: ais-fab-click 0.24s ease-out forwards; }
 
         #ais-main, #ais-settings { position: fixed; right: 22px; bottom: 86px; z-index: 2147483640; width: 420px; background: #fff; border-radius: 18px; box-shadow: 0 8px 40px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.06); display: flex; flex-direction: column; overflow: hidden; transition: opacity .32s cubic-bezier(.21,.61,.35,1), transform .32s cubic-bezier(.21,.61,.35,1), box-shadow .24s ease; transform-origin: top right; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; }
 
@@ -536,7 +546,7 @@
         .ais-loading { display: flex; align-items: center; justify-content: center; gap: 10px; color: #6366f1; padding: 32px; font-size: 13px; }
         .ais-spinner { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #e0e7ff; border-top-color: #6366f1; animation: ais-spin .7s linear infinite; flex-shrink: 0; }
 
-        .ais-res { line-height: 1.8; color: #1f2937; font-size: 13.5px; }
+        .ais-res { line-height: 1.8; color: #1f2937; font-size: 13.5px; word-break: break-word; overflow-wrap: break-word; max-width: 100%; }
         .ais-cursor::after { content: '▊'; color: #6366f1; animation: ais-blink .8s step-end infinite; }
         .ais-err { background: #fef2f2; border-left: 3px solid #f87171; color: #dc2626; padding: 12px 14px; border-radius: 8px; font-size: 13px; line-height: 1.6; }
 
