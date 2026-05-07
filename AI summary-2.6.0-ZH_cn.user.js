@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI summary
 // @namespace    http://tampermonkey.net/
-// @version      2.5.5
+// @version      2.6.0
 // @description  一键抓取网页正文，通过 AI API 智能总结；支持追问及多轮对话；支持 OpenAI/Anthropic/Gemini/DeepSeek等兼容接口
 // @author       Septuagint,URL:https://Candy-spt.com/
 // @match        *://*/*
@@ -203,6 +203,8 @@
    多提供商适配层
 ================================================ */
 
+  const DEBUG_STREAM = false;
+
   function detectProvider(url) {
     if (url.includes("anthropic.com")) return "anthropic";
     if (url.includes("generativelanguage.googleapis")) return "gemini";
@@ -217,6 +219,8 @@
         url: cfg.apiUrl,
         headers: {
           "Content-Type": "application/json",
+          Accept: "text/event-stream",
+          "Cache-Control": "no-cache",
           "x-api-key": cfg.apiKey,
           "anthropic-version": "2023-06-01",
         },
@@ -245,7 +249,11 @@
 
       return {
         url,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+          "Cache-Control": "no-cache",
+        },
         body: JSON.stringify({
           contents: contents,
           systemInstruction: { parts: [{ text: cfg.systemPrompt }] },
@@ -257,19 +265,27 @@
       };
     }
 
+    const bodyObj = {
+      model: cfg.model,
+      messages: [{ role: "system", content: cfg.systemPrompt }, ...messages],
+      max_tokens: +cfg.maxTokens,
+      temperature: +cfg.temperature,
+      stream: cfg.stream,
+    };
+
+    if (cfg.stream) {
+      bodyObj.stream_options = { include_usage: true };
+    }
+
     return {
       url: cfg.apiUrl,
       headers: {
         "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        "Cache-Control": "no-cache",
         Authorization: `Bearer ${cfg.apiKey}`,
       },
-      body: JSON.stringify({
-        model: cfg.model,
-        messages: [{ role: "system", content: cfg.systemPrompt }, ...messages],
-        max_tokens: +cfg.maxTokens,
-        temperature: +cfg.temperature,
-        stream: cfg.stream,
-      }),
+      body: JSON.stringify(bodyObj),
     };
   }
 
@@ -277,6 +293,7 @@
     if (!line.startsWith("data:")) return null;
     const raw = line.slice(5).trim();
     if (!raw) return null;
+    if (DEBUG_STREAM) console.log("[SSE RAW]", raw);
     try {
       if (provider === "anthropic") {
         const json = JSON.parse(raw);
@@ -284,17 +301,25 @@
         if (
           json.type === "content_block_delta" &&
           json.delta?.type === "text_delta"
-        )
+        ) {
+          if (DEBUG_STREAM) console.log("[SSE DELTA]", json.delta.text);
           return json.delta.text;
+        }
         return null;
       }
-      if (provider === "gemini")
-        return (
-          JSON.parse(raw).candidates?.[0]?.content?.parts?.[0]?.text || null
-        );
+      if (provider === "gemini") {
+        const data = JSON.parse(raw);
+        const item = Array.isArray(data) ? data[0] : data;
+        const text = item?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+        if (DEBUG_STREAM) console.log("[SSE DELTA]", text);
+        return text;
+      }
       if (raw === "[DONE]") return "[DONE]";
-      return JSON.parse(raw).choices?.[0]?.delta?.content || null;
-    } catch {
+      const text = JSON.parse(raw).choices?.[0]?.delta?.content || null;
+      if (DEBUG_STREAM) console.log("[SSE DELTA]", text);
+      return text;
+    } catch (e) {
+      if (DEBUG_STREAM) console.log("[SSE PARSE ERROR]", e, raw);
       return null;
     }
   }
@@ -302,17 +327,23 @@
   function parseFullResponse(provider, responseText) {
     if (responseText.includes("data:")) {
       let result = "";
-      for (const line of responseText.split("\n")) {
-        const delta = parseStreamChunk(provider, line.trim());
-        if (delta && delta !== "[DONE]") result += delta;
+      const events = responseText.split("\n\n");
+      for (const event of events) {
+        const lines = event.split("\n");
+        for (const line of lines) {
+          const delta = parseStreamChunk(provider, line.trim());
+          if (delta && delta !== "[DONE]") result += delta;
+        }
       }
       if (result) return result;
     }
     try {
       const json = JSON.parse(responseText);
       if (provider === "anthropic") return json.content?.[0]?.text || "";
-      if (provider === "gemini")
-        return json.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      if (provider === "gemini") {
+        const item = Array.isArray(json) ? json[0] : json;
+        return item?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      }
       return json.choices?.[0]?.message?.content || "";
     } catch {
       return "";
@@ -357,17 +388,23 @@
             buffer = ev.responseText;
             if (!newPart) return;
             streamBuffer += newPart;
-            const lines = streamBuffer.split("\n");
-            streamBuffer = lines.pop();
-            for (const rawLine of lines) {
-              const delta = parseStreamChunk(provider, rawLine.trim());
-              if (delta === "[DONE]") {
-                finish(fullText);
-                return;
-              }
-              if (delta) {
-                fullText += delta;
-                onChunk(fullText);
+
+            const events = streamBuffer.split("\n\n");
+            streamBuffer = events.pop(); // 保留最后一个不完整的 event
+
+            for (const event of events) {
+              if (DEBUG_STREAM) console.log("[SSE EVENT]", event);
+              const lines = event.split("\n");
+              for (const line of lines) {
+                const delta = parseStreamChunk(provider, line.trim());
+                if (delta === "[DONE]") {
+                  finish(fullText);
+                  return;
+                }
+                if (delta) {
+                  fullText += delta;
+                  onChunk(fullText);
+                }
               }
             }
           }
@@ -391,9 +428,13 @@
             const rawResp = res.responseText;
             if (rawResp.includes("data:")) {
               let result = "";
-              for (const line of rawResp.split("\n")) {
-                const delta = parseStreamChunk(provider, line.trim());
-                if (delta && delta !== "[DONE]") result += delta;
+              const events = rawResp.split("\n\n");
+              for (const event of events) {
+                const lines = event.split("\n");
+                for (const line of lines) {
+                  const delta = parseStreamChunk(provider, line.trim());
+                  if (delta && delta !== "[DONE]") result += delta;
+                }
               }
               fullText = result || parseFullResponse(provider, rawResp);
             } else {
