@@ -273,10 +273,6 @@
       stream: cfg.stream,
     };
 
-    if (cfg.stream) {
-      bodyObj.stream_options = { include_usage: true };
-    }
-
     return {
       url: cfg.apiUrl,
       headers: {
@@ -324,17 +320,55 @@
     }
   }
 
+  function normalizeSseText(text) {
+    return String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  }
+
+  function splitSseEvents(text, flush = false) {
+    const parts = normalizeSseText(text).split(/\n\n+/);
+    if (flush) return { events: parts.filter(Boolean), rest: "" };
+    return {
+      events: parts.slice(0, -1).filter(Boolean),
+      rest: parts[parts.length - 1] || "",
+    };
+  }
+
+  function processSseEvent(provider, event, onDelta, onDone) {
+    if (DEBUG_STREAM) console.log("[SSE EVENT]", event);
+    for (const line of normalizeSseText(event).split("\n")) {
+      const delta = parseStreamChunk(provider, line.trim());
+      if (delta === "[DONE]") {
+        onDone?.();
+        return true;
+      }
+      if (delta) onDelta(delta);
+    }
+    return false;
+  }
+
+  function collectSseText(provider, responseText) {
+    let result = "";
+    const { events } = splitSseEvents(responseText, true);
+    for (const event of events) {
+      processSseEvent(provider, event, (delta) => {
+        result += delta;
+      });
+    }
+    return result;
+  }
+
+  function getProgressResponseText(ev) {
+    return (
+      ev?.responseText ??
+      ev?.target?.responseText ??
+      ev?.currentTarget?.responseText ??
+      ""
+    );
+  }
+
   function parseFullResponse(provider, responseText) {
     if (responseText.includes("data:")) {
-      let result = "";
-      const events = responseText.split("\n\n");
-      for (const event of events) {
-        const lines = event.split("\n");
-        for (const line of lines) {
-          const delta = parseStreamChunk(provider, line.trim());
-          if (delta && delta !== "[DONE]") result += delta;
-        }
-      }
+      const result = collectSseText(provider, responseText);
       if (result) return result;
     }
     try {
@@ -384,28 +418,27 @@
       timeout: 90000,
       onprogress: cfg.stream
         ? (ev) => {
-            const newPart = ev.responseText.slice(buffer.length);
-            buffer = ev.responseText;
+            const responseText = getProgressResponseText(ev);
+            if (!responseText || responseText.length < buffer.length) return;
+            const newPart = responseText.slice(buffer.length);
+            buffer = responseText;
             if (!newPart) return;
             streamBuffer += newPart;
 
-            const events = streamBuffer.split("\n\n");
-            streamBuffer = events.pop(); // 保留最后一个不完整的 event
+            const { events, rest } = splitSseEvents(streamBuffer);
+            streamBuffer = rest;
 
             for (const event of events) {
-              if (DEBUG_STREAM) console.log("[SSE EVENT]", event);
-              const lines = event.split("\n");
-              for (const line of lines) {
-                const delta = parseStreamChunk(provider, line.trim());
-                if (delta === "[DONE]") {
-                  finish(fullText);
-                  return;
-                }
-                if (delta) {
+              const done = processSseEvent(
+                provider,
+                event,
+                (delta) => {
                   fullText += delta;
                   onChunk(fullText);
-                }
-              }
+                },
+                () => finish(fullText),
+              );
+              if (done) return;
             }
           }
         : null,
@@ -424,18 +457,26 @@
           return;
         }
         setTimeout(() => {
+          if (streamBuffer) {
+            const { events } = splitSseEvents(streamBuffer, true);
+            streamBuffer = "";
+            for (const event of events) {
+              const done = processSseEvent(
+                provider,
+                event,
+                (delta) => {
+                  fullText += delta;
+                  onChunk(fullText);
+                },
+                () => finish(fullText),
+              );
+              if (done) return;
+            }
+          }
           if (!fullText) {
-            const rawResp = res.responseText;
+            const rawResp = res.responseText || buffer || streamBuffer;
             if (rawResp.includes("data:")) {
-              let result = "";
-              const events = rawResp.split("\n\n");
-              for (const event of events) {
-                const lines = event.split("\n");
-                for (const line of lines) {
-                  const delta = parseStreamChunk(provider, line.trim());
-                  if (delta && delta !== "[DONE]") result += delta;
-                }
-              }
+              const result = collectSseText(provider, rawResp);
               fullText = result || parseFullResponse(provider, rawResp);
             } else {
               fullText = parseFullResponse(provider, rawResp);
