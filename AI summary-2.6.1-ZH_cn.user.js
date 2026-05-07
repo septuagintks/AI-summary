@@ -609,7 +609,8 @@
 
         .ais-off { opacity: 0 !important; pointer-events: none !important; transform: translateY(16px) scale(.96) !important; filter: blur(0.4px) !important; }
 
-        #ais-fab { position: fixed; right: 22px; bottom: 22px; z-index: 2147483641; display: flex; align-items: center; justify-content: center; width: 35px; height: 35px; border-radius: 50%; background: linear-gradient(135deg, #F8F8F8, #F8F8F8); border: none; cursor: pointer; color: #fff; font-size: 24px; box-shadow: 1px 4px 18px rgba(125,125,125,.6); transition: transform .26s cubic-bezier(0.22,1,0.36,1), box-shadow .26s ease, left .26s ease, top .26s ease; will-change: transform, left, top; user-select: none; }
+        #ais-fab-wrap { position: fixed; inset: 0; z-index: 2147483641; pointer-events: none; overflow: hidden; }
+        #ais-fab { position: absolute; right: 22px; bottom: 22px; pointer-events: auto; display: flex; align-items: center; justify-content: center; width: 35px; height: 35px; border-radius: 50%; background: linear-gradient(135deg, #F8F8F8, #F8F8F8); border: none; cursor: pointer; color: #fff; font-size: 24px; box-shadow: 1px 4px 18px rgba(125,125,125,.6); transition: transform .26s cubic-bezier(0.22,1,0.36,1), box-shadow .26s ease, left .26s ease, top .26s ease; will-change: transform, left, top; user-select: none; }
         #ais-fab:hover { transform: scale(1.08); box-shadow: 0 8px 28px rgba(130,130,130,.35); }
         #ais-fab.ais-fab-pressing { transform: scale(.88) !important; transition: transform .12s ease-out !important; }
         #ais-fab.ais-fab-clicking { animation: ais-fab-click 0.24s ease-out forwards; }
@@ -1268,12 +1269,15 @@
        初始化
     ================================================ */
   function init() {
+    const wrap = document.createElement("div");
+    wrap.id = "ais-fab-wrap";
+
     const fab = document.createElement("button");
     fab.id = "ais-fab";
     fab.title = "AI 内容总结";
     fab.textContent = "📍";
     const pos = GM_getValue("fab_position");
-    Object.assign(fab.style, { position: "fixed" });
+    Object.assign(fab.style, { position: "absolute" });
 
     if (pos) {
       if (pos.xRatio !== undefined && pos.yRatio !== undefined) {
@@ -1289,7 +1293,8 @@
       fab.style.right = "22px";
       fab.style.bottom = "22px";
     }
-    document.body.appendChild(fab);
+    wrap.appendChild(fab);
+    document.body.appendChild(wrap);
 
     const snapFab = () => {
       if (window.snapSide === "left")
