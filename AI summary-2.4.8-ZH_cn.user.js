@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI summary
 // @namespace    http://tampermonkey.net/
-// @version      2.4.7
+// @version      2.4.8
 // @description  一键抓取网页正文，通过 AI API 智能总结；支持追问及多轮对话；支持 OpenAI/Anthropic/Gemini/DeepSeek等兼容接口
 // @author       Septuagint,URL:https://Candy-spt.com/
 // @match        *://*/*
@@ -490,12 +490,13 @@
         @keyframes ais-spin { to { transform: rotate(360deg); } }
         @keyframes ais-blink { 50% { opacity: 0; } }
         @keyframes ais-ti { from { opacity:0; transform:translateY(8px); } }
+        @keyframes ais-fab-click { 0%{transform:scale(1)} 30%{transform:scale(.82)} 65%{transform:scale(1.1)} 85%{transform:scale(.96)} 100%{transform:scale(1)} }
 
         .ais-off { opacity: 0 !important; pointer-events: none !important; transform: translateY(10px) scale(.97) !important; }
 
         #ais-fab { position: fixed; right: 22px; bottom: 22px; z-index: 2147483641; display: flex; align-items: center; justify-content: center; width: 35px; height: 35px; border-radius: 50%; background: linear-gradient(135deg, #F8F8F8, #F8F8F8); border: none; cursor: pointer; color: #fff; font-size: 24px; box-shadow: 1px 4px 18px rgba(125,125,125,.6); transition: transform .2s, box-shadow .2s; user-select: none; }
         #ais-fab:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(150,150,150,.5); }
-        #ais-fab:active { transform: scale(.95); }
+        #ais-fab.ais-fab-clicking { animation: ais-fab-click 0.45s cubic-bezier(0.25,1.4,0.4,1) forwards; }
 
         #ais-main, #ais-settings { position: fixed; right: 22px; bottom: 86px; z-index: 2147483640; width: 420px; background: #fff; border-radius: 18px; box-shadow: 0 8px 40px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.06); display: flex; flex-direction: column; overflow: hidden; transition: opacity .22s ease, transform .22s ease; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; }
 
@@ -726,8 +727,8 @@
        事件绑定
     ================================================ */
   function bindMainEvents() {
-    const PEEK_LEFT = 16,
-      PEEK_RIGHT = 24,
+    const PEEK_LEFT = 8,
+      PEEK_RIGHT = 8,
       DRAG_THRESHOLD = 8;
     const fab = $("ais-fab");
     let isDragging = false,
@@ -803,15 +804,22 @@
       window.snapSide = isLeft ? "left" : "right";
     });
 
+    let isEntering = false,
+      enterTimer = null;
     fab.addEventListener("mouseenter", () => {
+      if (enterTimer) clearTimeout(enterTimer);
+      isEntering = true;
       const rect = fab.getBoundingClientRect();
       fab.style.transition = "all 0.25s ease-out";
       if (rect.left < window.innerWidth / 2) fab.style.left = 15 + "px";
       else fab.style.left = window.innerWidth - fab.offsetWidth - 15 + "px";
+      enterTimer = setTimeout(() => {
+        isEntering = false;
+      }, 320);
     });
 
     fab.addEventListener("mouseleave", () => {
-      if (isDragging) return;
+      if (isDragging || isEntering) return;
       const rect = fab.getBoundingClientRect();
       fab.style.transition = "all 0.3s cubic-bezier(0.25, 1.4, 0.4, 1)";
       if (rect.left < window.innerWidth / 2)
@@ -825,6 +833,14 @@
         e.stopPropagation();
         return;
       }
+      fab.classList.remove("ais-fab-clicking");
+      void fab.offsetWidth;
+      fab.classList.add("ais-fab-clicking");
+      fab.addEventListener(
+        "animationend",
+        () => fab.classList.remove("ais-fab-clicking"),
+        { once: true },
+      );
       panelOpen = !panelOpen;
       if (panelOpen) positionMainPanelBasedOnFab(); // 动态计算跟随位置
       toggle("ais-main", panelOpen);
@@ -1140,16 +1156,16 @@
       if (pos && pos.xRatio !== undefined)
         window.snapSide = pos.xRatio < 0.5 ? "left" : "right";
       if (window.snapSide === "left")
-        fab.style.left = -(fab.offsetWidth - 16) + 10 + "px";
-      else fab.style.left = window.innerWidth - 24 - 10 + "px";
+        fab.style.left = -(fab.offsetWidth - 8) + 10 + "px";
+      else fab.style.left = window.innerWidth - 8 - 10 + "px";
     });
 
     setTimeout(() => {
       const rect = fab.getBoundingClientRect();
       fab.style.transition = "none";
       if (rect.left < window.innerWidth / 2)
-        fab.style.left = -(fab.offsetWidth - 16) + 10 + "px";
-      else fab.style.left = window.innerWidth - 24 - 10 + "px";
+        fab.style.left = -(fab.offsetWidth - 8) + 10 + "px";
+      else fab.style.left = window.innerWidth - 8 - 10 + "px";
     }, 50);
 
     const mainPanel = createMainPanel();
