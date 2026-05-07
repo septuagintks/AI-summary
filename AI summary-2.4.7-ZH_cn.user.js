@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI summary
 // @namespace    http://tampermonkey.net/
-// @version      2.4.6
+// @version      2.4.7
 // @description  一键抓取网页正文，通过 AI API 智能总结；支持追问及多轮对话；支持 OpenAI/Anthropic/Gemini/DeepSeek等兼容接口
 // @author       Septuagint,URL:https://Candy-spt.com/
 // @match        *://*/*
@@ -844,32 +844,38 @@
     $("ais-cfg-open").addEventListener("click", () => {
       settingsOpen = !settingsOpen;
       if (settingsOpen) {
-        // 基于悬浮按钮位置生成设置窗口
-        const fab = $("ais-fab");
+        // 基于主面板当前位置生成设置窗口
+        const mainRect = $("ais-main").getBoundingClientRect();
         const sPanel = $("ais-settings");
-        const fabRect = fab.getBoundingClientRect();
-        const isLeft = fabRect.left < window.innerWidth / 2;
 
         sPanel.style.right = "auto";
         sPanel.style.bottom = "auto";
 
-        let leftPos = isLeft ? fabRect.right + 15 : fabRect.left - 420 - 15;
-        leftPos = Math.max(10, Math.min(window.innerWidth - 420 - 10, leftPos));
-        sPanel.style.left = leftPos + "px";
+        let left = mainRect.left;
+        let top = mainRect.top;
 
-        let topPos = fabRect.top;
+        sPanel.style.visibility = "hidden";
+        sPanel.classList.remove("ais-off");
 
-        const panelHeight = 580;
+        const rect = sPanel.getBoundingClientRect();
+        const width = rect.width;
+        const height = rect.height;
 
-        if (topPos + panelHeight > window.innerHeight) {
-          topPos = window.innerHeight - panelHeight - 8;
+        if (left + width > window.innerWidth) {
+          left = window.innerWidth - width - 10;
         }
 
-        topPos = Math.max(8, topPos);
+        if (top + height > window.innerHeight) {
+          top = window.innerHeight - height - 20;
+        }
 
-        sPanel.style.top = Math.max(10, topPos) + "px";
+        left = Math.max(10, left);
+        top = Math.max(10, top);
 
-        sPanel.classList.remove("ais-off");
+        sPanel.style.left = left + "px";
+        sPanel.style.top = top + "px";
+
+        sPanel.style.visibility = "";
       }
       toggle("ais-settings", settingsOpen);
     });
@@ -1083,7 +1089,6 @@
         $("ais-run").style.display = "none";
         $("ais-chat-wrap").style.display = "flex";
         $("ais-chat-input").focus();
-        positionMainPanelBasedOnFab();
       },
       onError(err) {
         streaming = false;
@@ -1157,6 +1162,7 @@
     renderSettings(Cfg.get());
     bindMainEvents();
     makeDraggable("ais-main"); // 激活拖动
+    makeDraggable("ais-settings"); // 激活设置面板拖动
   }
 
   GM_registerMenuCommand("🤖 AI 总结当前页面", () => {
