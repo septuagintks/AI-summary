@@ -7,3 +7,5 @@ One-click extraction of webpage main content, with intelligent summarization via
 Now supporting EN_US and ZH_CN version, download your language version and import to Tempermonkey into use.
 
 **API key is stored locally in your browser and never uploaded!**
+
+**This project has been Dropped.**
