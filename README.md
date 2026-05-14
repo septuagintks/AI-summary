@@ -8,4 +8,4 @@ Now supporting EN_US and ZH_CN version, download your language version and impor
 
 **API key is stored locally in your browser and never uploaded!**
 
-**This project has been Dropped.**
+**This project has been Dropped and removed to [septuagintks/Edge-Agent](https://github.com/septuagintks/Edge-Agent)**
